@@ -5,7 +5,7 @@ window.PROGRESS = {
   project: "The Turf Ball",
   tagline: "Football stats & Player of the Month, automatically",
   updated: "16 Aug 2026",
-  currentlyDoing: "Database and backend are both live. Waiting on the email-confirmation switch, then we test sign-up together.",
+  currentlyDoing: "You are in the app. Fixing things as you find them — flexible session times just went live.",
 
   // status: "done" | "doing" | "todo" | "blocked"
   phases: [
@@ -179,6 +179,16 @@ window.PROGRESS = {
         { name: "Demo data", plain: "A sample group so you can see it full of data immediately.", tech: "Seed script generating an org with 20 players and 4 played sessions.", status: "done" },
         { name: "Deployment notes", plain: "Clear instructions for pushing it live.", tech: "README with supabase db push, functions deploy list, env vars, Vercel config.", status: "done" }
       ]
+    },
+    {
+      id: 15,
+      name: "Changes from using it",
+      plain: "Things we're fixing now that you're actually in the app.",
+      status: "doing",
+      tasks: [
+        { name: "Flexible session times", plain: "Set up as many regular playing times as you want — different days, or the same day twice for a morning and an evening game. Change them any time.", tech: "New session_slots table (weekday 0-6 + time + optional label/venue), upcoming_slots() function resolving the next real dates in the org timezone, CRUD under /organizations/:id/slots, Schedule settings tab, one-tap booking on the new-session screen. Old single playing_day + default_kickoff backfilled into slots automatically.", status: "done" },
+        { name: "Pick your days during setup", plain: "The setup walkthrough still only lets you choose one day. Needs to allow several.", tech: "Onboarding step 1 sends playing_days: [single]. Change to multi-select and create slots directly.", status: "todo" }
+      ]
     }
   ],
 
@@ -205,11 +215,13 @@ window.PROGRESS = {
     { time: "16 Aug 2026", text: "BACKEND IS LIVE. All 12 services deployed.", kind: "done" },
     { time: "16 Aug 2026", text: "CAUGHT A REAL BUG before you hit it: Supabase rejects any request that does not carry a key, including the public share page and sign-up. Both would have failed instantly for everyone. Fixed and redeployed.", kind: "issue" },
     { time: "16 Aug 2026", text: "Tidied error messages — forms now say \"Your name must be at least 2 characters\" instead of \"full_name must be at least 2 characters\".", kind: "done" },
-    { time: "16 Aug 2026", text: "TESTED LIVE: signed-out access is refused, missing pages return the right error, bad sign-ups are rejected field by field. Everything answering correctly.", kind: "done" }
+    { time: "16 Aug 2026", text: "TESTED LIVE: signed-out access is refused, missing pages return the right error, bad sign-ups are rejected field by field. Everything answering correctly.", kind: "done" },
+    { time: "16 Aug 2026", text: "YOU ASKED: session times were locked to one day at one time, with no way to change them after setup. Now you can add as many as you play — Sunday morning AND Sunday evening, plus a Tuesday, whatever you want. Live now under Settings → Schedule.", kind: "done" },
+    { time: "16 Aug 2026", text: "Good news on that one: the database already allowed several sessions in a single day, so nothing you have recorded needed changing. Your existing Sunday time was carried over automatically.", kind: "note" }
   ],
 
   blockers: [
-    "Email confirmation still needs switching on by hand in the Supabase dashboard (Authentication → Providers → Email). Sign-up will look like it worked but no email will ever arrive."
+    "The setup walkthrough still only offers one playing day. Not urgent — you can now add as many times as you like in Settings → Schedule — but new groups will hit the same limit until it is fixed."
   ],
 
   decisions: [
