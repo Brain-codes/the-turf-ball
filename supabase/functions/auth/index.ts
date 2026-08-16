@@ -12,15 +12,18 @@ import { me } from './handlers/me.ts'
 import { updateProfile } from './handlers/updateProfile.ts'
 import { resendVerification } from './handlers/resendVerification.ts'
 import { acceptInvite } from './handlers/acceptInvite.ts'
+import { confirmDeleteAccount, previewDeleteAccount } from './handlers/deleteAccount.ts'
 
 Deno.serve(createRouter('auth', {
   GET: {
     'me': me,
+    'delete-account': previewDeleteAccount,
   },
   POST: {
     'register': register,
     'resend-verification': resendVerification,
     'accept-invite': acceptInvite,
+    'delete-account': confirmDeleteAccount,
   },
   PATCH: {
     'me': updateProfile,

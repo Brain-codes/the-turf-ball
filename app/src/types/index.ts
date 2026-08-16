@@ -1,6 +1,7 @@
 export type Role = 'owner' | 'admin' | 'recorder'
-export type PlayerPosition = 'GK' | 'DEF' | 'MID' | 'FWD'
-export type PlayerStatus = 'active' | 'inactive' | 'guest'
+export type PlayerPosition =
+  | 'GK' | 'RB' | 'CB' | 'LB' | 'CDM' | 'CM' | 'CAM' | 'LM' | 'RM' | 'LW' | 'RW' | 'ST' | 'CF'
+export type PlayerStatus = 'active' | 'inactive' | 'guest' | 'pending'
 export type SessionStatus = 'scheduled' | 'live' | 'completed' | 'cancelled'
 export type MatchStatus = 'pending' | 'live' | 'completed' | 'abandoned'
 export type Side = 'a' | 'b'
@@ -17,6 +18,7 @@ export interface Profile {
   full_name: string | null
   avatar_url: string | null
   onboarded_at: string | null
+  deleted_at?: string | null
 }
 
 export interface Organization {
@@ -98,6 +100,7 @@ export interface Player {
   first_name: string
   last_name: string | null
   display_name: string
+  whatsapp_nickname: string | null
   photo_url: string | null
   jersey_number: number | null
   position: PlayerPosition | null
@@ -146,8 +149,17 @@ export interface Session {
   status: SessionStatus
   notes: string | null
   slot_id?: string | null
+  is_auto_generated?: boolean
+  flagged_inactive_at?: string | null
+  approved_at?: string | null
+  approved_by?: string | null
   matches?: Match[]
   attendance?: Attendance[]
+}
+
+/** A session counts unless it was flagged inactive and never approved. */
+export function sessionCounted(session: Pick<Session, 'flagged_inactive_at' | 'approved_at'>): boolean {
+  return !session.flagged_inactive_at || !!session.approved_at
 }
 
 export interface Attendance {
@@ -233,6 +245,17 @@ export interface DashboardData {
   top_keeper: PlayerStats | null
   recent_sessions: Session[]
   live_session: { id: string } | null
+}
+
+export interface DeleteAccountPreview {
+  organizations: {
+    id: string
+    name: string
+    player_count: number
+    session_count: number
+    other_member_count: number
+  }[]
+  warning: string
 }
 
 export interface MemberRow {

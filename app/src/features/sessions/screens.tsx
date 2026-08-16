@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/services/client'
@@ -9,22 +9,54 @@ import {
   PlayerAvatar, SectionTitle, Skeleton,
 } from '@/components/ui'
 import { FadeIn } from '@/components/motion'
-import { BAND_LABEL, fullDate, shortDate, time } from '@/lib/format'
-import type { Attendance, Player, Session, UpcomingSlot } from '@/types'
+import { cn } from '@/lib/cn'
+import { BAND_LABEL, countdown, fullDate, shortDate, time } from '@/lib/format'
+import { sessionCounted } from '@/types'
+import type { Attendance, Session, UpcomingSlot } from '@/types'
 
 /* -------------------------------------------------------------------------- */
 /* Session list                                                                */
 /* -------------------------------------------------------------------------- */
 
+/** Ticks every 30s so the "next session" countdown stays live without a refetch. */
+function useNow(intervalMs = 30_000) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(id)
+  }, [intervalMs])
+  return now
+}
+
 export function SessionsScreen() {
   const { activeOrg } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const now = useNow()
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['sessions', activeOrg?.id],
     queryFn: async () => (await api.get<Session[]>('sessions')).data,
     enabled: !!activeOrg,
+    refetchInterval: 60_000,
   })
+
+  const isAdmin = activeOrg?.role === 'owner' || activeOrg?.role === 'admin'
+
+  const approve = useMutation({
+    mutationFn: async (id: string) => api.post(`sessions/${id}/approve`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+
+  const sessions = data ?? []
+  // The scheduler auto-generates the next session ahead of time (HANDOFF.md
+  // feature 3), so "next session" is whichever scheduled/live one is soonest.
+  const nextSession = sessions
+    .filter((s) => s.status === 'scheduled' || s.status === 'live')
+    .sort((a, b) => new Date(a.kickoff_at).getTime() - new Date(b.kickoff_at).getTime())[0]
 
   return (
     <div className="pb-8">
@@ -34,13 +66,33 @@ export function SessionsScreen() {
       />
 
       <div className="px-5">
+        {nextSession && (
+          <Card className="mb-4 border-volt-400/30 bg-volt-400/5">
+            <div className="text-[11px] uppercase tracking-wider text-chalk-muted">
+              {nextSession.status === 'live' ? 'Live now' : 'Next session'}
+            </div>
+            <div className="mt-1 text-[17px] font-semibold text-chalk">
+              {nextSession.title || fullDate(nextSession.session_date)}
+            </div>
+            <div key={now} className="mt-0.5 numeric text-[15px] text-volt-400">
+              {nextSession.status === 'live' ? 'In progress' : countdown(nextSession.kickoff_at)}
+            </div>
+            <Link
+              to={nextSession.status === 'live' ? `/app/sessions/${nextSession.id}/live` : `/app/sessions/${nextSession.id}`}
+              className="mt-2 inline-block text-[13px] text-volt-400"
+            >
+              {nextSession.status === 'live' ? 'Rejoin →' : 'View →'}
+            </Link>
+          </Card>
+        )}
+
         {isLoading ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}
           </div>
         ) : error ? (
           <ErrorState message={(error as Error).message} onRetry={refetch} />
-        ) : (data ?? []).length === 0 ? (
+        ) : sessions.length === 0 ? (
           <EmptyState
             icon="📅"
             title="No sessions yet"
@@ -49,39 +101,66 @@ export function SessionsScreen() {
           />
         ) : (
           <div className="space-y-2.5">
-            {(data ?? []).map((session) => (
-              <Link
-                key={session.id}
-                to={session.status === 'live' ? `/app/sessions/${session.id}/live` : `/app/sessions/${session.id}`}
-              >
-                <Card className="transition-colors hover:border-pitch-600">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[15px] text-chalk">
-                          {session.title || shortDate(session.session_date)}
-                        </span>
-                        {session.status === 'live' && <Badge tone="live">Live</Badge>}
-                        {session.status === 'scheduled' && <Badge>Upcoming</Badge>}
+            {sessions.map((session) => {
+              const flagged = !!session.flagged_inactive_at
+              const counted = sessionCounted(session)
+              const cancelled = session.status === 'cancelled'
+              return (
+                <Card
+                  key={session.id}
+                  className={cn('transition-colors hover:border-pitch-600', cancelled && 'opacity-50')}
+                >
+                  <Link
+                    to={session.status === 'live' ? `/app/sessions/${session.id}/live` : `/app/sessions/${session.id}`}
+                    className="block"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[15px] text-chalk">
+                            {session.title || shortDate(session.session_date)}
+                          </span>
+                          {session.status === 'live' && <Badge tone="live">Live</Badge>}
+                          {session.status === 'scheduled' && <Badge>Upcoming</Badge>}
+                          {cancelled && <Badge>Cancelled</Badge>}
+                          {flagged && (
+                            <Badge tone="warn">{counted ? 'Approved' : 'No activity recorded'}</Badge>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-[13px] text-chalk-muted">
+                          {fullDate(session.session_date)} · {time(session.kickoff_at)}
+                        </div>
                       </div>
-                      <div className="mt-0.5 text-[13px] text-chalk-muted">
-                        {fullDate(session.session_date)} · {time(session.kickoff_at)}
+                      <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                        {(session.matches ?? []).map((m) => (
+                          <span
+                            key={m.id}
+                            className="numeric rounded-lg bg-pitch-800 px-2 py-1 text-[13px] text-chalk-muted"
+                          >
+                            {m.side_a_score}–{m.side_b_score}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                      {(session.matches ?? []).map((m) => (
-                        <span
-                          key={m.id}
-                          className="numeric rounded-lg bg-pitch-800 px-2 py-1 text-[13px] text-chalk-muted"
-                        >
-                          {m.side_a_score}–{m.side_b_score}
-                        </span>
-                      ))}
+                  </Link>
+                  {flagged && !counted && isAdmin && (
+                    <div className="mt-3 flex items-center justify-between border-t border-pitch-700 pt-3">
+                      <p className="text-[12.5px] text-chalk-muted">
+                        No one was marked present and no matches were recorded — excluded from totals.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={approve.isPending}
+                        onClick={(e) => { e.preventDefault(); approve.mutate(session.id) }}
+                      >
+                        Approve anyway
+                      </Button>
                     </div>
-                  </div>
+                  )}
                 </Card>
-              </Link>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -134,6 +213,22 @@ export function NewSessionScreen() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not create the session'),
   })
 
+  // A pickup game with no regular slot and no plan — kick off happens right
+  // now, so this skips session detail entirely and drops straight into the
+  // live "who's here?" screen, same as a scheduled session going live.
+  const startNow = useMutation({
+    mutationFn: async () =>
+      api.post<Session>('sessions', {
+        kickoff_at: new Date().toISOString(),
+        venue: activeOrg?.venue || undefined,
+      }),
+    onSuccess: ({ data }) => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      navigate(`/app/sessions/${data.id}/live`, { replace: true })
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not start a session'),
+  })
+
   const bookable = (upcoming ?? []).filter((slot) => !slot.already_scheduled)
 
   return (
@@ -141,6 +236,15 @@ export function NewSessionScreen() {
       <PageHeader title="New session" subtitle="Set up a match day" />
 
       <FadeIn className="space-y-6 px-5">
+        <Button
+          size="xl"
+          fullWidth
+          loading={startNow.isPending}
+          onClick={() => startNow.mutate()}
+        >
+          ⚡ Start a session now
+        </Button>
+
         {loadingSlots ? (
           <Skeleton className="h-40" />
         ) : bookable.length > 0 ? (
@@ -258,44 +362,11 @@ interface SessionDetail extends Session {
 export function SessionDetailScreen() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const { activeOrg } = useAuth()
-  const [present, setPresent] = useState<Set<string> | null>(null)
 
   const { data: session, isLoading, error, refetch } = useQuery({
     queryKey: ['session', id],
     queryFn: async () => (await api.get<SessionDetail>(`sessions/${id}`)).data,
     enabled: !!id,
-  })
-
-  const { data: players } = useQuery({
-    queryKey: ['players', activeOrg?.id],
-    queryFn: async () => (await api.get<Player[]>('players')).data,
-    enabled: !!activeOrg,
-  })
-
-  // Seed the tick-list from whatever has already been saved.
-  const selected = present ?? new Set(
-    (session?.attendance ?? []).filter((a) => a.status === 'present').map((a) => a.player_id),
-  )
-
-  const saveAttendance = useMutation({
-    mutationFn: async (playerIds: Set<string>) =>
-      api.post(`sessions/${id}/attendance`, {
-        entries: (players ?? []).map((p) => ({
-          player_id: p.id,
-          status: playerIds.has(p.id) ? 'present' : 'absent',
-        })),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['session', id] }),
-  })
-
-  const startPlaying = useMutation({
-    mutationFn: async () => api.post(`sessions/${id}/start`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['session', id] })
-      navigate(`/app/sessions/${id}/live`)
-    },
   })
 
   if (isLoading) {
@@ -310,16 +381,9 @@ export function SessionDetailScreen() {
   if (error) return <ErrorState message={(error as Error).message} onRetry={refetch} />
   if (!session) return null
 
-  function toggle(playerId: string) {
-    const next = new Set(selected)
-    if (next.has(playerId)) next.delete(playerId)
-    else next.add(playerId)
-    setPresent(next)
-    saveAttendance.mutate(next)
-  }
-
-  const attendanceByPlayer = new Map(session.attendance.map((a) => [a.player_id, a]))
   const isCompleted = session.status === 'completed'
+  const presentCount = session.attendance.filter((a) => a.status === 'present').length
+  const flagged = !!session.flagged_inactive_at
 
   return (
     <div className="pb-8">
@@ -335,53 +399,37 @@ export function SessionDetailScreen() {
       />
 
       <div className="px-5">
-        {!isCompleted && (
-          <section className="mb-7">
-            <SectionTitle action={<span className="text-[13px] text-chalk-muted">{selected.size} in</span>}>
-              Who turned up
-            </SectionTitle>
+        {flagged && (
+          <Card className="mb-5 border-card-yellow/30 bg-card-yellow/5">
+            <p className="text-[13.5px] leading-relaxed text-chalk">
+              No one was marked present and no matches were recorded for this session — it's
+              excluded from your totals unless an admin approves it from the Sessions list.
+            </p>
+          </Card>
+        )}
 
-            {(players ?? []).length === 0 ? (
-              <EmptyState
-                icon="👥"
-                title="No players in your squad"
-                description="Add some players first."
-                action={<Button onClick={() => navigate('/app/players')}>Add players</Button>}
-              />
-            ) : (
-              <div className="surface divide-y divide-pitch-700 overflow-hidden">
-                {(players ?? []).map((player) => {
-                  const isIn = selected.has(player.id)
-                  const record = attendanceByPlayer.get(player.id)
-                  return (
-                    <button
-                      key={player.id}
-                      onClick={() => toggle(player.id)}
-                      className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-pitch-800"
-                    >
-                      <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[12px] font-bold ${
-                          isIn
-                            ? 'border-volt-400 bg-volt-400 text-void'
-                            : 'border-pitch-600 text-transparent'
-                        }`}
-                      >
-                        ✓
-                      </span>
-                      <PlayerAvatar name={player.display_name} photoUrl={player.photo_url} size="sm" />
-                      <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">
-                        {player.display_name}
-                      </span>
-                      {isIn && record?.punctuality_band && (
-                        <Badge tone={record.punctuality_band === 'early' ? 'volt' : record.punctuality_band === 'on_time' ? 'neutral' : 'warn'}>
-                          {BAND_LABEL[record.punctuality_band]}
-                        </Badge>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+        {presentCount > 0 && (
+          <section className="mb-7">
+            <SectionTitle>Who turned up</SectionTitle>
+            <div className="surface divide-y divide-pitch-700 overflow-hidden">
+              {session.attendance.filter((a) => a.status === 'present').map((a) => (
+                <div key={a.id} className="flex items-center gap-3 px-3.5 py-3">
+                  <PlayerAvatar
+                    name={a.players?.display_name ?? 'Player'}
+                    photoUrl={a.players?.photo_url}
+                    size="sm"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">
+                    {a.players?.display_name}
+                  </span>
+                  {a.punctuality_band && (
+                    <Badge tone={a.punctuality_band === 'early' ? 'volt' : a.punctuality_band === 'on_time' ? 'neutral' : 'warn'}>
+                      {BAND_LABEL[a.punctuality_band]}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
           </section>
         )}
 
@@ -405,20 +453,14 @@ export function SessionDetailScreen() {
         )}
 
         {!isCompleted && (
-          <Button
-            size="xl"
-            fullWidth
-            disabled={selected.size < 2}
-            loading={startPlaying.isPending}
-            onClick={() => startPlaying.mutate()}
-          >
-            {session.status === 'live' ? 'Back to match day' : 'Start playing'}
+          <Button size="xl" fullWidth onClick={() => navigate(`/app/sessions/${id}/live`)}>
+            {session.status === 'live' ? 'Back to match day' : 'Enter session'}
           </Button>
         )}
 
-        {selected.size < 2 && !isCompleted && (
+        {!isCompleted && presentCount === 0 && (
           <p className="mt-2 text-center text-[13px] text-chalk-faint">
-            Tick at least two players to start
+            You'll mark who's here as soon as you enter
           </p>
         )}
       </div>

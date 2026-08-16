@@ -13,6 +13,7 @@ import { Spinner } from '@/components/ui'
  */
 import { Landing } from '@/features/public/Landing'
 import { PublicPageScreen, PublicPlayerScreen } from '@/features/public/PublicPage'
+import { JoinTeamScreen } from '@/features/onboarding/JoinTeam'
 
 const LoginScreen = lazy(() => import('@/features/auth/screens').then((m) => ({ default: m.LoginScreen })))
 const RegisterScreen = lazy(() => import('@/features/auth/screens').then((m) => ({ default: m.RegisterScreen })))
@@ -38,6 +39,7 @@ const FootballSettings = lazy(() => import('@/features/settings/Settings').then(
 const ScoringSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.ScoringSettings })))
 const ShareSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.ShareSettings })))
 const MembersSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.MembersSettings })))
+const AccountSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.AccountSettings })))
 const JoinScreen = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.JoinScreen })))
 
 function Booting() {
@@ -76,6 +78,7 @@ export function Router() {
       <Route path="/t/:slug" element={<PublicPageScreen />} />
       <Route path="/t/:slug/player/:playerId" element={<PublicPlayerScreen />} />
       <Route path="/join/:token" element={<JoinScreen />} />
+      <Route path="/play/:slug" element={<JoinTeamScreen />} />
 
       {/* Auth */}
       <Route path="/login" element={<GuestOnly><LoginScreen /></GuestOnly>} />
@@ -90,7 +93,10 @@ export function Router() {
         element={
           loading ? <Booting />
             : !authenticated ? <Navigate to="/login" replace />
-            : !needsOnboarding ? <Navigate to="/app" replace />
+            // needsOnboarding flips false the instant a group is created
+            // (step 1 of 4) — the sessionStorage flag keeps the wizard from
+            // being kicked to /app mid-flow while steps 2-4 still run.
+            : (!needsOnboarding && !sessionStorage.getItem('tb_onboarding_active')) ? <Navigate to="/app" replace />
             : <Onboarding />
         }
       />
@@ -116,6 +122,7 @@ export function Router() {
           <Route path="scoring" element={<ScoringSettings />} />
           <Route path="share" element={<ShareSettings />} />
           <Route path="members" element={<MembersSettings />} />
+          <Route path="account" element={<AccountSettings />} />
         </Route>
       </Route>
 

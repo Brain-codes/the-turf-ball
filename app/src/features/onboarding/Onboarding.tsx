@@ -1,40 +1,45 @@
 /**
- * Onboarding. SPEC.md §5.1 — must be completable in under two minutes.
+ * Onboarding — 4-step wizard. SPEC.md §5.1 sets the "fast to finish" bar;
+ * this rebuild trades the old single-day, name-only version for something
+ * that actually gets a real group's schedule and squad in before they land
+ * on the dashboard.
  *
- * That constraint drives every decision here: four steps, one question per
- * screen where possible, sensible defaults for everything, and the ability to
- * skip straight past the squad and come back later.
+ * Rebuilt 16 Aug (session 3) — the previous 5-step onboarding (single
+ * kickoff-only schedule step, names-only player step) is now obsolete. See
+ * HANDOFF.md for why: it captured one day/time per group and never asked
+ * for an end time, so `session_slots.duration_minutes` was always the
+ * 90-minute default even for groups that play two-hour sessions.
+ *
+ * Step 1 — Team          (unchanged: name, format, venue)
+ * Step 2 — Schedule       multi-day, multi-slot, shared OR per-day times
+ * Step 3 — Players        manual add (with photo/foot/kit name) + a
+ *                         copyable self-serve invite link + a live
+ *                         pending-approval queue
+ * Step 4 — Review         schedule + squad + next-session preview, then
+ *                         straight to the dashboard with zero further setup
  */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, setActiveOrg } from '@/services/client'
 import { useAuth } from '@/features/auth/AuthProvider'
-import { Button, Field, Input, Select, Card } from '@/components/ui'
+import { Badge, Button, Card, Field, Input, PlayerAvatar, PositionSelect, Select } from '@/components/ui'
 import { FadeIn } from '@/components/motion'
-import type { Organization, ScoringPreset } from '@/types'
+import { cn } from '@/lib/cn'
+import { countdown } from '@/lib/format'
+import { compressImage } from '@/lib/file'
+import { minutesBetween } from '@/lib/time'
+import type { Organization, Player, UpcomingSlot } from '@/types'
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-
-const PRESETS: ScoringPreset[] = [
-  {
-    key: 'balanced',
-    name: 'Balanced',
-    description: 'Rewards turning up and contributing, not just scoring.',
-    rules: { goal: 5, assist: 3, appearance: 1, clean_sheet: 2 },
-  },
-  {
-    key: 'goal_heavy',
-    name: 'Goals decide it',
-    description: 'For groups where finishing is everything.',
-    rules: { goal: 8, assist: 3, appearance: 1, clean_sheet: 2 },
-  },
-  {
-    key: 'team_first',
-    name: 'Team first',
-    description: 'Turning up and defending count as much as scoring.',
-    rules: { goal: 4, assist: 4, appearance: 3, clean_sheet: 4 },
-  },
+const WEEKDAYS = [
+  { value: 0, label: 'Sunday', short: 'Sun' },
+  { value: 1, label: 'Monday', short: 'Mon' },
+  { value: 2, label: 'Tuesday', short: 'Tue' },
+  { value: 3, label: 'Wednesday', short: 'Wed' },
+  { value: 4, label: 'Thursday', short: 'Thu' },
+  { value: 5, label: 'Friday', short: 'Fri' },
+  { value: 6, label: 'Saturday', short: 'Sat' },
 ]
 
 function StepDots({ step, total }: { step: number; total: number }) {
@@ -52,6 +57,8 @@ function StepDots({ step, total }: { step: number; total: number }) {
   )
 }
 
+
+
 export function Onboarding() {
   const navigate = useNavigate()
   const { refresh, profile } = useAuth()
@@ -65,12 +72,28 @@ export function Onboarding() {
     venue: '',
     location: '',
     format: '5aside',
-    playing_day: 'Sunday',
-    default_kickoff: '17:00',
   })
 
-  const [namesText, setNamesText] = useState('')
-  const [preset, setPreset] = useState('balanced')
+  // Schedule: pick several weekdays, then either one shared kickoff+end
+  // applied to all of them, or a distinct kickoff+end per day. Real groups
+  // like the user's own (Tue/Thu 6-8pm) need both days AND an end time —
+  // the old onboarding only ever captured one kickoff.
+  const [scheduleMode, setScheduleMode] = useState<'shared' | 'perday'>('shared')
+  const [selectedDays, setSelectedDays] = useState<number[]>([])
+  const [shared, setShared] = useState({ start: '18:00', end: '20:00' })
+  const [perDay, setPerDay] = useState<Record<number, { start: string; end: string }>>({})
+
+  const [preset] = useState('balanced')
+  const [addedPlayers, setAddedPlayers] = useState<Player[]>([])
+
+  const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
+
+  function toggleDay(day: number) {
+    setSelectedDays((days) =>
+      days.includes(day) ? days.filter((d) => d !== day) : [...days, day].sort((a, b) => a - b),
+    )
+    setPerDay((p) => (p[day] ? p : { ...p, [day]: { start: '18:00', end: '20:00' } }))
+  }
 
   async function createGroup() {
     setBusy(true)
@@ -82,11 +105,15 @@ export function Onboarding() {
         location: details.location || null,
         format: details.format,
         players_per_side: details.format === '5aside' ? 5 : details.format === '7aside' ? 7 : 11,
-        playing_days: [details.playing_day],
-        default_kickoff: details.default_kickoff,
       })
       setOrg(data)
       setActiveOrg(data.id)
+      // Marks the wizard as still in progress. `refresh()` below makes
+      // `needsOnboarding` flip to false the instant the org exists (it just
+      // checks organizations.length > 0), and the /onboarding route guard
+      // reacts to that on every render — without this flag it would bounce
+      // straight to /app after step 1, before steps 2-4 ever render.
+      sessionStorage.setItem('tb_onboarding_active', '1')
       await refresh()
       setStep(1)
     } catch (err) {
@@ -96,45 +123,47 @@ export function Onboarding() {
     }
   }
 
-  async function addPlayers() {
-    const names = namesText
-      .split('\n')
-      .map((n) => n.trim())
-      .filter(Boolean)
-
-    if (names.length === 0) {
+  async function saveSchedule() {
+    if (selectedDays.length === 0) {
       setStep(2)
       return
     }
-
     setBusy(true)
     setError(null)
     try {
-      await api.post('players/bulk', { names })
+      for (const day of selectedDays) {
+        const times = scheduleMode === 'shared' ? shared : perDay[day] ?? shared
+        const duration = minutesBetween(times.start, times.end)
+        try {
+          await api.post(`organizations/${org!.id}/slots`, {
+            weekday: day,
+            kickoff: times.start,
+            duration_minutes: duration,
+          })
+        } catch (err) {
+          // Duplicate day+time is a 409 — harmless, skip rather than block setup.
+          if (!(err instanceof ApiError && err.status === 409)) throw err
+        }
+      }
       setStep(2)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not add those players')
+      setError(err instanceof ApiError ? err.message : 'Could not save your schedule')
     } finally {
       setBusy(false)
     }
   }
 
-  async function saveScoring() {
+  async function saveScoringAndFinish() {
     setBusy(true)
-    setError(null)
     try {
       await api.put('scoring/rules', { preset })
-      setStep(3)
     } catch {
-      // Scoring already has sensible defaults, so a failure here should not
-      // block someone from finishing setup. They can change it in settings.
-      setStep(3)
+      // Scoring already has sensible defaults — never block finishing setup.
     } finally {
       setBusy(false)
+      setStep(3)
     }
   }
-
-  const firstName = profile?.full_name?.split(' ')[0] ?? 'there'
 
   return (
     <div className="pitch-lines min-h-dvh px-5 py-10">
@@ -157,24 +186,6 @@ export function Onboarding() {
                   autoFocus
                 />
               </Field>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Which day?">
-                  <Select
-                    value={details.playing_day}
-                    onChange={(e) => setDetails({ ...details, playing_day: e.target.value })}
-                  >
-                    {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-                  </Select>
-                </Field>
-                <Field label="Kick off">
-                  <Input
-                    type="time"
-                    value={details.default_kickoff}
-                    onChange={(e) => setDetails({ ...details, default_kickoff: e.target.value })}
-                  />
-                </Field>
-              </div>
 
               <Field label="Format">
                 <Select
@@ -212,112 +223,443 @@ export function Onboarding() {
         )}
 
         {step === 1 && (
-          <FadeIn key="step1">
-            <h1 className="text-3xl">Add your squad</h1>
+          <FadeIn key="step1schedule">
+            <h1 className="text-3xl">When do you play?</h1>
             <p className="mt-2 mb-7 text-[15px] text-chalk-muted">
-              One name per line. You can add shirt numbers and photos later.
+              Pick every day you play, then set the kick-off and finish time — a Sunday morning and
+              a Sunday evening are two separate slots, so pick the days first if they differ.
             </p>
 
-            <textarea
-              value={namesText}
-              onChange={(e) => setNamesText(e.target.value)}
-              rows={9}
-              autoFocus
-              placeholder={'Ade\nMike\nJohn\nSam\nTony'}
-              className="w-full resize-none rounded-xl border border-pitch-700 bg-pitch-900 p-4 text-[15px] leading-8 text-chalk placeholder:text-chalk-faint focus:border-turf-400 focus:outline-none"
-            />
+            <Field label="Which days?">
+              <div className="grid grid-cols-4 gap-2">
+                {WEEKDAYS.map((day) => (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleDay(day.value)}
+                    className={cn(
+                      'h-11 rounded-lg border text-[14px] transition-colors',
+                      selectedDays.includes(day.value)
+                        ? 'border-volt-400 bg-volt-400/15 font-semibold text-volt-400'
+                        : 'border-pitch-700 bg-pitch-900 text-chalk-muted hover:border-pitch-600',
+                    )}
+                  >
+                    {day.short}
+                  </button>
+                ))}
+              </div>
+            </Field>
 
-            <p className="mt-2 text-[13px] text-chalk-faint">
-              {namesText.split('\n').filter((n) => n.trim()).length} player(s)
-            </p>
+            {selectedDays.length > 1 && (
+              <div className="mt-4 flex gap-2 rounded-lg bg-pitch-900 p-1">
+                <button
+                  type="button"
+                  onClick={() => setScheduleMode('shared')}
+                  className={cn(
+                    'flex-1 rounded-md py-2 text-[13px] font-medium transition-colors',
+                    scheduleMode === 'shared' ? 'bg-pitch-700 text-chalk' : 'text-chalk-muted',
+                  )}
+                >
+                  Same time every day
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleMode('perday')}
+                  className={cn(
+                    'flex-1 rounded-md py-2 text-[13px] font-medium transition-colors',
+                    scheduleMode === 'perday' ? 'bg-pitch-700 text-chalk' : 'text-chalk-muted',
+                  )}
+                >
+                  Different times
+                </button>
+              </div>
+            )}
+
+            {selectedDays.length > 0 && (
+              <div className="mt-4 space-y-3">
+                {scheduleMode === 'shared' || selectedDays.length === 1 ? (
+                  <Card className="flex items-end gap-3">
+                    <div className="flex-1">
+                      <Field label="Kick off">
+                        <Input
+                          type="time"
+                          value={shared.start}
+                          onChange={(e) => setShared({ ...shared, start: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+                    <div className="flex-1">
+                      <Field label="Finish">
+                        <Input
+                          type="time"
+                          value={shared.end}
+                          onChange={(e) => setShared({ ...shared, end: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+                  </Card>
+                ) : (
+                  selectedDays.map((day) => (
+                    <Card key={day} className="flex items-end gap-3">
+                      <span className="w-14 shrink-0 pb-2.5 text-[14px] text-chalk-muted">
+                        {WEEKDAYS[day].short}
+                      </span>
+                      <div className="flex-1">
+                        <Field label="Kick off">
+                          <Input
+                            type="time"
+                            value={perDay[day]?.start ?? '18:00'}
+                            onChange={(e) =>
+                              setPerDay((p) => ({
+                                ...p,
+                                [day]: { start: e.target.value, end: p[day]?.end ?? '20:00' },
+                              }))
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="flex-1">
+                        <Field label="Finish">
+                          <Input
+                            type="time"
+                            value={perDay[day]?.end ?? '20:00'}
+                            onChange={(e) =>
+                              setPerDay((p) => ({
+                                ...p,
+                                [day]: { start: p[day]?.start ?? '18:00', end: e.target.value },
+                              }))
+                            }
+                          />
+                        </Field>
+                      </div>
+                    </Card>
+                  ))
+                )}
+              </div>
+            )}
 
             {error && <p className="mt-3 text-[14px] text-card-red">{error}</p>}
 
             <div className="mt-5 space-y-2">
-              <Button size="lg" fullWidth loading={busy} onClick={addPlayers}>
-                {namesText.trim() ? 'Add these players' : 'Continue'}
+              <Button size="lg" fullWidth loading={busy} onClick={saveSchedule}>
+                Continue
               </Button>
-              <Button variant="ghost" fullWidth onClick={() => setStep(2)}>
-                I'll do this later
-              </Button>
+              {selectedDays.length === 0 && (
+                <Button variant="ghost" fullWidth onClick={() => setStep(2)}>
+                  I'll set this up later
+                </Button>
+              )}
             </div>
           </FadeIn>
         )}
 
-        {step === 2 && (
-          <FadeIn key="step2">
-            <h1 className="text-3xl">How do points work?</h1>
-            <p className="mt-2 mb-7 text-[15px] text-chalk-muted">
-              This decides who wins Player of the Month. You can change it any time.
-            </p>
-
-            <div className="space-y-3">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.key}
-                  onClick={() => setPreset(p.key)}
-                  className={`w-full rounded-2xl border p-4 text-left transition-colors ${
-                    preset === p.key
-                      ? 'border-volt-400 bg-volt-400/5'
-                      : 'border-pitch-700 bg-pitch-900 hover:border-pitch-600'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-chalk">{p.name}</span>
-                    {preset === p.key && <span className="text-volt-400">✓</span>}
-                  </div>
-                  <p className="mt-1 text-[13.5px] text-chalk-muted">{p.description}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {Object.entries(p.rules).map(([key, value]) => (
-                      <span
-                        key={key}
-                        className="rounded-full bg-pitch-800 px-2.5 py-1 text-[11px] text-chalk-muted"
-                      >
-                        {key.replace('_', ' ')} <span className="numeric text-chalk">+{value}</span>
-                      </span>
-                    ))}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <Button size="lg" fullWidth className="mt-5" loading={busy} onClick={saveScoring}>
-              Continue
-            </Button>
-          </FadeIn>
+        {step === 2 && org && (
+          <PlayersStep
+            org={org}
+            addedPlayers={addedPlayers}
+            onPlayerAdded={(p) => setAddedPlayers((prev) => [...prev, p])}
+            onContinue={saveScoringAndFinish}
+            busy={busy}
+          />
         )}
 
-        {step === 3 && (
-          <FadeIn key="step3">
-            <div className="mb-6 text-center">
-              <div className="mb-4 text-6xl">🏆</div>
-              <h1 className="text-3xl">{org?.name} is ready</h1>
-              <p className="mt-2 text-[15px] text-chalk-muted">
-                Here's your share link — drop it in your WhatsApp group so everyone can follow the table.
-              </p>
-            </div>
-
-            <Card className="mb-5">
-              <div className="text-[11px] uppercase tracking-wider text-chalk-muted">Your share link</div>
-              <div className="mt-1.5 truncate font-mono text-[13px] text-volt-400">
-                {window.location.origin}/t/{org?.slug}
-              </div>
-              <Button
-                variant="secondary"
-                fullWidth
-                className="mt-3"
-                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/t/${org?.slug}`)}
-              >
-                Copy link
-              </Button>
-            </Card>
-
-            <Button size="lg" fullWidth onClick={() => navigate('/app', { replace: true })}>
-              Go to my dashboard
-            </Button>
-          </FadeIn>
+        {step === 3 && org && (
+          <ReviewStep
+            org={org}
+            onFinish={() => {
+              sessionStorage.removeItem('tb_onboarding_active')
+              navigate('/app', { replace: true })
+            }}
+          />
         )}
       </div>
     </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Step 3 — Players: manual add + self-serve invite + pending queue           */
+/* -------------------------------------------------------------------------- */
+
+const FEET = [
+  { value: '', label: 'No preference' },
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+  { value: 'both', label: 'Both' },
+]
+
+function PlayersStep({
+  org,
+  addedPlayers,
+  onPlayerAdded,
+  onContinue,
+  busy,
+}: {
+  org: Organization
+  addedPlayers: Player[]
+  onPlayerAdded: (p: Player) => void
+  onContinue: () => void
+  busy: boolean
+}) {
+  const [form, setForm] = useState({
+    first_name: '',
+    display_name: '',
+    whatsapp_nickname: '',
+    preferred_foot: '',
+    position: '',
+  })
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false);
+
+  const inviteLink = `${window.location.origin}/play/${org.slug}`
+
+  const { data: pending, refetch: refetchPending } = useQuery({
+    queryKey: ['players-pending', org.id],
+    queryFn: async () => (await api.get<Player[]>('players', { status: 'pending' })).data,
+    refetchInterval: 15000,
+  })
+
+  async function addPlayer() {
+    if (form.first_name.trim().length < 1) return
+    setSaving(true)
+    setError(null)
+    try {
+      const photo_base64 = photoFile ? await compressImage(photoFile) : undefined
+      const { data } = await api.post<Player>('players', {
+        first_name: form.first_name.trim(),
+        display_name: form.display_name.trim() || undefined,
+        whatsapp_nickname: form.whatsapp_nickname.trim() || undefined,
+        preferred_foot: form.preferred_foot || undefined,
+        position: form.position || undefined,
+        photo_base64,
+      })
+      onPlayerAdded(data)
+      setForm({ first_name: '', display_name: '', whatsapp_nickname: '', preferred_foot: '', position: '' })
+      setPhotoFile(null)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not add that player')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function decide(id: string, action: 'approve' | 'reject') {
+    await api.post(`players/${id}/${action}`)
+    refetchPending()
+  }
+
+  return (
+    <FadeIn key="step2players">
+      <h1 className="text-3xl">Add your squad</h1>
+      <p className="mt-2 mb-7 text-[15px] text-chalk-muted">
+        Add players yourself, or share the invite link and let them add themselves — you approve
+        each one before they show up in the squad.
+      </p>
+
+      <Card className="mb-5 space-y-3">
+        <Field label="Name">
+          <Input
+            value={form.first_name}
+            onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+            placeholder="Ade Adeyemi"
+            autoFocus
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Kit / nickname" hint="Optional">
+            <Input
+              value={form.display_name}
+              onChange={(e) => setForm({ ...form, display_name: e.target.value })}
+              placeholder="Ade"
+            />
+          </Field>
+          <Field label="Preferred foot">
+            <Select
+              value={form.preferred_foot}
+              onChange={(e) => setForm({ ...form, preferred_foot: e.target.value })}
+            >
+              {FEET.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <Field label="Position" hint="Optional">
+          <PositionSelect
+            value={form.position}
+            onChange={(e) => setForm({ ...form, position: e.target.value })}
+          />
+        </Field>
+        <Field label="WhatsApp nickname" hint="Optional — the name they go by in the group chat">
+          <Input
+            value={form.whatsapp_nickname}
+            onChange={(e) => setForm({ ...form, whatsapp_nickname: e.target.value })}
+            placeholder="Ade Turf Ball"
+          />
+        </Field>
+        <Field label="Photo" hint="Optional">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+            className="block w-full text-[13px] text-chalk-muted file:mr-3 file:rounded-lg file:border-0 file:bg-pitch-700 file:px-3 file:py-2 file:text-[13px] file:text-chalk"
+          />
+        </Field>
+        {error && <p className="text-[14px] text-card-red">{error}</p>}
+        <Button
+          fullWidth
+          loading={saving}
+          disabled={form.first_name.trim().length < 1}
+          onClick={addPlayer}
+        >
+          Add player
+        </Button>
+      </Card>
+
+      {addedPlayers.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {addedPlayers.map((p) => (
+            <Card key={p.id} className="flex items-center gap-3 py-2.5">
+              <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
+              <span className="min-w-0 flex-1 truncate text-[14px] text-chalk">{p.display_name}</span>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Card className="mb-5">
+        <div className="text-[11px] uppercase tracking-wider text-chalk-muted">Self-serve invite link</div>
+        <p className="mt-1 text-[13px] text-chalk-muted">
+          Share this and players can add themselves — you'll approve each one below.
+        </p>
+        <div className="mt-2 truncate rounded-lg bg-pitch-900 px-3 py-2 font-mono text-[13px] text-volt-400">
+          {inviteLink}
+        </div>
+        <Button
+          variant="secondary"
+          fullWidth
+          className="mt-3"
+          onClick={() => {
+            navigator.clipboard.writeText(inviteLink)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          }}
+        >
+          {copied ? 'Copied!' : 'Copy link'}
+        </Button>
+      </Card>
+
+      {(pending ?? []).length > 0 && (
+        <div className="mb-5">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-[13px] font-medium text-chalk">Waiting for approval</span>
+            <Badge tone="warn">{pending!.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {pending!.map((p) => (
+              <Card key={p.id} className="flex items-center gap-3 py-2.5">
+                <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
+                <span className="min-w-0 flex-1 truncate text-[14px] text-chalk">{p.display_name}</span>
+                <button
+                  onClick={() => decide(p.id, 'reject')}
+                  className="text-[13px] text-chalk-muted hover:text-card-red"
+                >
+                  Reject
+                </button>
+                <button
+                  onClick={() => decide(p.id, 'approve')}
+                  className="text-[13px] font-medium text-volt-400"
+                >
+                  Approve
+                </button>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Button size="lg" fullWidth loading={busy} onClick={onContinue}>
+        Continue
+      </Button>
+    </FadeIn>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Step 4 — Review: schedule + squad + next-session preview                   */
+/* -------------------------------------------------------------------------- */
+
+function ReviewStep({ org, onFinish }: { org: Organization; onFinish: () => void }) {
+  const queryClient = useQueryClient()
+
+  const { data: upcoming } = useQuery({
+    queryKey: ['upcoming-slots', org.id],
+    queryFn: async () => (await api.get<UpcomingSlot[]>(`organizations/${org.id}/slots/upcoming`, { limit: 1 })).data,
+  })
+
+  const { data: players } = useQuery({
+    queryKey: ['players', org.id],
+    queryFn: async () => (await api.get<Player[]>('players')).data,
+  })
+
+  const next = upcoming?.[0]
+
+  return (
+    <FadeIn key="step3review">
+      <div className="mb-6 text-center">
+        <div className="mb-4 text-6xl">🏆</div>
+        <h1 className="text-3xl">{org.name} is ready</h1>
+        <p className="mt-2 text-[15px] text-chalk-muted">
+          Nothing else to set up — sessions will appear on your own from your schedule.
+        </p>
+      </div>
+
+      <Card className="mb-3">
+        <div className="text-[11px] uppercase tracking-wider text-chalk-muted">Next session</div>
+        {next ? (
+          <>
+            <div className="mt-1 text-[17px] text-chalk">{next.display_label}</div>
+            <div className="mt-0.5 text-[13px] text-volt-400">{countdown(next.occurs_at)}</div>
+          </>
+        ) : (
+          <p className="mt-1 text-[14px] text-chalk-muted">
+            No schedule set yet — add one any time in Settings → Schedule.
+          </p>
+        )}
+      </Card>
+
+      <Card className="mb-5">
+        <div className="text-[11px] uppercase tracking-wider text-chalk-muted">Squad</div>
+        <div className="mt-1 text-[17px] text-chalk">
+          {(players ?? []).length} player{(players ?? []).length === 1 ? '' : 's'} ready
+        </div>
+      </Card>
+
+      <Card className="mb-5">
+        <div className="text-[11px] uppercase tracking-wider text-chalk-muted">Your share link</div>
+        <div className="mt-1.5 truncate font-mono text-[13px] text-volt-400">
+          {window.location.origin}/t/{org.slug}
+        </div>
+        <Button
+          variant="secondary"
+          fullWidth
+          className="mt-3"
+          onClick={() => navigator.clipboard.writeText(`${window.location.origin}/t/${org.slug}`)}
+        >
+          Copy link
+        </Button>
+      </Card>
+
+      <Button
+        size="lg"
+        fullWidth
+        onClick={() => {
+          queryClient.invalidateQueries()
+          onFinish()
+        }}
+      >
+        Go to my dashboard
+      </Button>
+    </FadeIn>
   )
 }

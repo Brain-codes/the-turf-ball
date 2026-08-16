@@ -12,7 +12,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import type { Ctx } from '../../_shared/router.ts'
 import { successResponse } from '../../_shared/response.ts'
-import { conflict } from '../../_shared/errors.ts'
+import { conflict, tooMany } from '../../_shared/errors.ts'
 import { email, required, str, validate } from '../../_shared/validation.ts'
 
 interface Body {
@@ -66,6 +66,12 @@ export async function register(ctx: Ctx): Promise<Response> {
   if (signUpError || !signUpData.user) {
     if (signUpError?.message?.toLowerCase().includes('already')) {
       throw conflict('An account with this email already exists. Try logging in instead.')
+    }
+    // Supabase's built-in email sender has a low, shared rate limit. Surface
+    // this as a clear, temporary condition rather than a generic 500 — it's
+    // not a bug, it's the mail provider throttling.
+    if (signUpError?.message?.toLowerCase().includes('rate limit')) {
+      throw tooMany('Too many signups right now. Please wait a few minutes and try again.')
     }
     throw new Error(signUpError?.message ?? 'Could not create the account')
   }

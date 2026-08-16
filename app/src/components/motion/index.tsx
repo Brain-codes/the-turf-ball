@@ -249,18 +249,43 @@ export function UndoToast({
   seconds = 5,
   onUndo,
   onExpire,
+  liftAboveActionBar,
 }: {
   show: boolean
   label: string
   seconds?: number
   onUndo: () => void
   onExpire: () => void
+  /** True while a bottom action bar is also on screen, so the toast floats above it instead of covering it. */
+  liftAboveActionBar?: boolean
 }) {
+  const [remaining, setRemaining] = useState(seconds)
+
+  // The caller (MatchDay's LiveMatch) re-renders every second because its
+  // own match clock ticks — onExpire/onUndo are inline arrow functions that
+  // get a new identity on every one of those renders. Depending on them
+  // directly meant this effect tore down and restarted its timers every
+  // ~1s, permanently resetting the countdown before it could ever reach
+  // zero — the toast looked stuck and never closed itself. Refs decouple
+  // the timers from the caller's render cadence; only a real show/seconds
+  // change should restart the countdown.
+  const onExpireRef = useRef(onExpire)
+  const onUndoRef = useRef(onUndo)
+  useEffect(() => {
+    onExpireRef.current = onExpire
+    onUndoRef.current = onUndo
+  })
+
   useEffect(() => {
     if (!show) return
-    const t = setTimeout(onExpire, seconds * 1000)
-    return () => clearTimeout(t)
-  }, [show, seconds, onExpire])
+    setRemaining(seconds)
+    const t = setTimeout(() => onExpireRef.current(), seconds * 1000)
+    const tick = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000)
+    return () => {
+      clearTimeout(t)
+      clearInterval(tick)
+    }
+  }, [show, seconds])
 
   return (
     <AnimatePresence>
@@ -270,10 +295,13 @@ export function UndoToast({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 60, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-          className="fixed inset-x-3 bottom-3 z-40 flex items-center gap-3 rounded-2xl border border-pitch-700 bg-pitch-800 px-4 py-3 shadow-2xl safe-bottom"
+          className={cn(
+            'fixed inset-x-3 z-40 flex items-center gap-3 rounded-2xl border border-pitch-700 bg-pitch-800 px-4 py-3 shadow-2xl',
+            liftAboveActionBar ? 'bottom-44' : 'bottom-3 safe-bottom',
+          )}
         >
-          <span className="relative h-7 w-7 shrink-0">
-            <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90">
+          <span className="relative flex h-7 w-7 shrink-0 items-center justify-center">
+            <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full -rotate-90">
               <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-pitch-700)" strokeWidth="4" />
               <motion.circle
                 cx="18" cy="18" r="15" fill="none"
@@ -284,6 +312,7 @@ export function UndoToast({
                 transition={{ duration: seconds, ease: 'linear' }}
               />
             </svg>
+            <span className="numeric relative text-[11px] font-bold text-chalk">{remaining}</span>
           </span>
           <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">{label}</span>
           <button

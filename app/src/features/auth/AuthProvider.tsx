@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { getSupabase, hasStoredSession } from '@/lib/supabase'
-import { api, setActiveOrg, getActiveOrg } from '@/services/client'
+import { api, ApiError, setActiveOrg, getActiveOrg } from '@/services/client'
 import type { Organization, Profile } from '@/types'
 
 interface MeResponse {
@@ -64,7 +64,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const next = valid?.id ?? me.organizations[0]?.id ?? null
       setActiveOrg(next)
       setActiveOrgId(next)
-    } catch {
+    } catch (err) {
+      // A 403 from /auth/me means the account's 30-day grace period has
+      // expired — the backend treats it as if the account no longer exists.
+      // Sign out of the (still technically valid) Supabase session so the
+      // app doesn't get stuck believing the user is authenticated with no
+      // profile.
+      if (err instanceof ApiError && err.status === 403) {
+        const supabase = await getSupabase()
+        await supabase.auth.signOut()
+        setActiveOrg(null)
+        setAuthenticated(false)
+      }
       setProfile(null)
       setOrganizations([])
     } finally {

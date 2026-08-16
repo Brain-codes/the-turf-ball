@@ -6,10 +6,11 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input,
-  PlayerAvatar, SectionTitle, Select, Skeleton, StatTile,
+  PlayerAvatar, PositionSelect, SectionTitle, Select, Skeleton, StatTile,
 } from '@/components/ui'
 import { FadeIn, Sheet, Stagger, StaggerItem } from '@/components/motion'
 import { POSITION_LABEL, points, shortDate } from '@/lib/format'
+import { compressImage } from '@/lib/file'
 import type { Award, Player, PlayerStats } from '@/types'
 
 /* -------------------------------------------------------------------------- */
@@ -29,6 +30,25 @@ export function PlayersScreen() {
     enabled: !!activeOrg,
   })
 
+  // Self-serve joins via the invite link (/play/:slug) land here as
+  // status='pending' and never appear in the default squad list — this is
+  // the ongoing home for approving/rejecting them, not just during onboarding.
+  const { data: pending, refetch: refetchPending } = useQuery({
+    queryKey: ['players-pending', activeOrg?.id],
+    queryFn: async () => (await api.get<Player[]>('players', { status: 'pending' })).data,
+    enabled: !!activeOrg,
+    refetchInterval: 20000,
+  })
+
+  const decide = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: 'approve' | 'reject' }) =>
+      api.post(`players/${id}/${action}`),
+    onSuccess: () => {
+      refetchPending()
+      queryClient.invalidateQueries({ queryKey: ['players'] })
+    },
+  })
+
   const filtered = (data ?? []).filter((p) =>
     p.display_name.toLowerCase().includes(search.trim().toLowerCase()),
   )
@@ -40,6 +60,37 @@ export function PlayersScreen() {
         subtitle={data ? `${data.length} player${data.length === 1 ? '' : 's'}` : undefined}
         action={<Button onClick={() => setAddOpen(true)}>Add</Button>}
       />
+
+      {pending && pending.length > 0 && (
+        <div className="px-5 pb-5">
+          <SectionTitle>
+            Waiting for approval ({pending.length})
+          </SectionTitle>
+          <Card className="mt-2 divide-y divide-pitch-700 !p-0">
+            {pending.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 px-3.5 py-3">
+                <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
+                <span className="min-w-0 flex-1 truncate text-[14px] text-chalk">{p.display_name}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  loading={decide.isPending && decide.variables?.id === p.id && decide.variables.action === 'reject'}
+                  onClick={() => decide.mutate({ id: p.id, action: 'reject' })}
+                >
+                  Reject
+                </Button>
+                <Button
+                  size="sm"
+                  loading={decide.isPending && decide.variables?.id === p.id && decide.variables.action === 'approve'}
+                  onClick={() => decide.mutate({ id: p.id, action: 'approve' })}
+                >
+                  Approve
+                </Button>
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
 
       <div className="px-5">
         {(data?.length ?? 0) > 6 && (
@@ -113,8 +164,16 @@ export function PlayersScreen() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Add players — the fast path                                                 */
+/* Add players — quick (names only) or full details (kit, foot, position,     */
+/* WhatsApp nickname, photo) — same fields the onboarding wizard collects.    */
 /* -------------------------------------------------------------------------- */
+
+const FEET = [
+  { value: '', label: 'No preference' },
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+  { value: 'both', label: 'Both' },
+] as const
 
 function AddPlayersSheet({
   open,
@@ -125,6 +184,30 @@ function AddPlayersSheet({
   onClose: () => void
   onDone: () => void
 }) {
+  const [mode, setMode] = useState<'quick' | 'full'>('quick')
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Add players">
+      <div className="mb-4 flex gap-2 rounded-lg bg-pitch-900 p-1">
+        <button
+          onClick={() => setMode('quick')}
+          className={`flex-1 rounded-md py-2 text-[13.5px] transition-colors ${mode === 'quick' ? 'bg-pitch-700 text-chalk' : 'text-chalk-muted'}`}
+        >
+          Quick add
+        </button>
+        <button
+          onClick={() => setMode('full')}
+          className={`flex-1 rounded-md py-2 text-[13.5px] transition-colors ${mode === 'full' ? 'bg-pitch-700 text-chalk' : 'text-chalk-muted'}`}
+        >
+          Full details
+        </button>
+      </div>
+      {mode === 'quick' ? <QuickAddForm onDone={onDone} /> : <FullAddForm onDone={onDone} />}
+    </Sheet>
+  )
+}
+
+function QuickAddForm({ onDone }: { onDone: () => void }) {
   const [names, setNames] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -140,9 +223,9 @@ function AddPlayersSheet({
   const list = names.split('\n').map((n) => n.trim()).filter(Boolean)
 
   return (
-    <Sheet open={open} onClose={onClose} title="Add players">
+    <>
       <p className="mb-3 text-[14px] text-chalk-muted">
-        One name per line. Shirt numbers and photos can come later.
+        One name per line. Shirt numbers, positions and photos can come later.
       </p>
       <textarea
         value={names}
@@ -163,7 +246,100 @@ function AddPlayersSheet({
       >
         Add {list.length > 0 ? `${list.length} player${list.length === 1 ? '' : 's'}` : 'players'}
       </Button>
-    </Sheet>
+    </>
+  )
+}
+
+function FullAddForm({ onDone }: { onDone: () => void }) {
+  const [form, setForm] = useState({
+    first_name: '',
+    display_name: '',
+    whatsapp_nickname: '',
+    preferred_foot: '',
+    position: '',
+  })
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const photo_base64 = photoFile ? await compressImage(photoFile) : undefined
+      return api.post('players', {
+        first_name: form.first_name.trim(),
+        display_name: form.display_name.trim() || undefined,
+        whatsapp_nickname: form.whatsapp_nickname.trim() || undefined,
+        preferred_foot: form.preferred_foot || undefined,
+        position: form.position || undefined,
+        photo_base64,
+      })
+    },
+    onSuccess: () => {
+      setForm({ first_name: '', display_name: '', whatsapp_nickname: '', preferred_foot: '', position: '' })
+      setPhotoFile(null)
+      onDone()
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not add that player'),
+  })
+
+  return (
+    <div className="space-y-3">
+      <Field label="Name">
+        <Input
+          value={form.first_name}
+          onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+          placeholder="Ade Adeyemi"
+          autoFocus
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Kit / nickname" hint="Optional">
+          <Input
+            value={form.display_name}
+            onChange={(e) => setForm({ ...form, display_name: e.target.value })}
+            placeholder="Ade"
+          />
+        </Field>
+        <Field label="Preferred foot">
+          <Select
+            value={form.preferred_foot}
+            onChange={(e) => setForm({ ...form, preferred_foot: e.target.value })}
+          >
+            {FEET.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <Field label="Position" hint="Optional">
+        <PositionSelect
+          value={form.position}
+          onChange={(e) => setForm({ ...form, position: e.target.value })}
+        />
+      </Field>
+      <Field label="WhatsApp nickname" hint="Optional — the name they go by in the group chat">
+        <Input
+          value={form.whatsapp_nickname}
+          onChange={(e) => setForm({ ...form, whatsapp_nickname: e.target.value })}
+          placeholder="Ade Turf Ball"
+        />
+      </Field>
+      <Field label="Photo" hint="Optional">
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+          className="block w-full text-[13px] text-chalk-muted file:mr-3 file:rounded-lg file:border-0 file:bg-pitch-700 file:px-3 file:py-2 file:text-[13px] file:text-chalk"
+        />
+      </Field>
+      {error && <p className="text-[14px] text-card-red">{error}</p>}
+      <Button
+        size="lg"
+        fullWidth
+        loading={mutation.isPending}
+        disabled={form.first_name.trim().length < 1}
+        onClick={() => mutation.mutate()}
+      >
+        Add player
+      </Button>
+    </div>
   )
 }
 
@@ -355,6 +531,7 @@ function EditPlayerSheet({
 }) {
   const [form, setForm] = useState({
     display_name: player.display_name,
+    whatsapp_nickname: player.whatsapp_nickname ?? '',
     jersey_number: player.jersey_number?.toString() ?? '',
     position: player.position ?? '',
     status: player.status,
@@ -366,6 +543,7 @@ function EditPlayerSheet({
     mutationFn: async () =>
       api.patch(`players/${player.id}`, {
         display_name: form.display_name,
+        whatsapp_nickname: form.whatsapp_nickname.trim() || null,
         jersey_number: form.jersey_number === '' ? null : Number(form.jersey_number),
         position: form.position || null,
         status: form.status,
@@ -401,18 +579,19 @@ function EditPlayerSheet({
             />
           </Field>
           <Field label="Position">
-            <Select
+            <PositionSelect
               value={form.position}
               onChange={(e) => setForm({ ...form, position: e.target.value })}
-            >
-              <option value="">Not set</option>
-              <option value="GK">Goalkeeper</option>
-              <option value="DEF">Defender</option>
-              <option value="MID">Midfielder</option>
-              <option value="FWD">Forward</option>
-            </Select>
+            />
           </Field>
         </div>
+
+        <Field label="WhatsApp nickname" hint="Optional — the name they go by in the group chat">
+          <Input
+            value={form.whatsapp_nickname}
+            onChange={(e) => setForm({ ...form, whatsapp_nickname: e.target.value })}
+          />
+        </Field>
 
         <Field label="Status" hint="Guests can be kept off the league table in settings">
           <Select

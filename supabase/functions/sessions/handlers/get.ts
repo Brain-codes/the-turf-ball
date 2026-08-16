@@ -23,7 +23,7 @@ export async function getSession(ctx: Ctx): Promise<Response> {
 
   const { data: matches } = await ctx.db
     .from('matches')
-    .select('*, match_players(player_id, side, is_goalkeeper, players(display_name, photo_url, jersey_number))')
+    .select('*, match_players(player_id, side, is_goalkeeper, players(id, display_name, photo_url, jersey_number))')
     .eq('session_id', sessionId)
     .order('sequence', { ascending: true })
 

@@ -10,7 +10,7 @@ import {
 } from '@/components/ui'
 import { FadeIn } from '@/components/motion'
 import { cn } from '@/lib/cn'
-import type { MemberRow, Organization, OrgSettings, ScoringPreset, ScoringRule } from '@/types'
+import type { DeleteAccountPreview, MemberRow, Organization, OrgSettings, ScoringPreset, ScoringRule } from '@/types'
 
 const TABS = [
   { to: '/app/settings/general', label: 'Group' },
@@ -19,6 +19,7 @@ const TABS = [
   { to: '/app/settings/scoring', label: 'Points' },
   { to: '/app/settings/share', label: 'Share page' },
   { to: '/app/settings/members', label: 'People' },
+  { to: '/app/settings/account', label: 'Account' },
 ]
 
 export function SettingsLayout() {
@@ -616,5 +617,103 @@ export function JoinScreen() {
         <p className="text-[15px] text-chalk-muted">Joining the group…</p>
       )}
     </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+
+export function AccountSettings() {
+  const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
+  const [step, setStep] = useState<'idle' | 'preview' | 'done'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  const preview = useMutation({
+    mutationFn: async () => (await api.get<DeleteAccountPreview>('auth/delete-account')).data,
+    onSuccess: () => setStep('preview'),
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not load account details'),
+  })
+
+  const confirmDelete = useMutation({
+    mutationFn: async () => api.post('auth/delete-account', { confirm: true }),
+    onSuccess: async () => {
+      setStep('done')
+      setTimeout(async () => {
+        await signOut()
+        navigate('/', { replace: true })
+      }, 3000)
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not delete your account'),
+  })
+
+  return (
+    <FadeIn className="space-y-6">
+      <Card>
+        <p className="text-[13.5px] leading-relaxed text-chalk-muted">
+          Signed in as <b className="text-chalk">{profile?.email}</b>.
+        </p>
+      </Card>
+
+      <div>
+        <SectionTitle>Danger zone</SectionTitle>
+        <Card className="border-card-red/30 bg-card-red/5">
+          {step === 'done' ? (
+            <p className="text-[14px] text-chalk">
+              Your account will be permanently deleted in 30 days. Log back in any time before then
+              to undo this. Signing you out now…
+            </p>
+          ) : step === 'preview' ? (
+            <div className="space-y-3">
+              <p className="text-[14px] leading-relaxed text-chalk">
+                {preview.data?.warning}
+              </p>
+              {(preview.data?.organizations ?? []).length > 0 && (
+                <div className="space-y-2">
+                  {preview.data!.organizations.map((org) => (
+                    <div key={org.id} className="rounded-lg border border-pitch-700 bg-pitch-900 p-3">
+                      <div className="text-[14px] font-semibold text-chalk">{org.name}</div>
+                      <div className="mt-1 text-[13px] text-chalk-muted">
+                        {org.player_count} player(s) · {org.session_count} session(s) ·{' '}
+                        {org.other_member_count} other member(s) will lose access
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {error && <p className="text-[14px] text-card-red">{error}</p>}
+              <div className="flex gap-2">
+                <Button
+                  variant="danger"
+                  fullWidth
+                  loading={confirmDelete.isPending}
+                  onClick={() => { setError(null); confirmDelete.mutate() }}
+                >
+                  Yes, delete my account
+                </Button>
+                <Button variant="ghost" fullWidth onClick={() => setStep('idle')}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-[14px] leading-relaxed text-chalk-muted">
+                Deleting your account removes your access and, if you own any groups, deletes those
+                too — with a 30-day grace period. Log back in any time before then to undo it.
+              </p>
+              {error && <p className="text-[14px] text-card-red">{error}</p>}
+              <Button
+                variant="danger"
+                fullWidth
+                loading={preview.isPending}
+                onClick={() => { setError(null); preview.mutate() }}
+              >
+                Delete my account
+              </Button>
+            </div>
+          )}
+        </Card>
+      </div>
+    </FadeIn>
   )
 }

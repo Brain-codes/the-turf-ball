@@ -15,6 +15,7 @@ import {
 } from '@/components/ui'
 import { FadeIn, Sheet } from '@/components/motion'
 import { cn } from '@/lib/cn'
+import { addMinutesToTime, minutesBetween } from '@/lib/time'
 import type { SessionSlot } from '@/types'
 
 const DAYS = [
@@ -96,7 +97,7 @@ export function ScheduleSettings() {
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="numeric text-[17px] text-chalk">
-                          {prettyTime(slot.kickoff)}
+                          {prettyTime(slot.kickoff)} – {prettyTime(addMinutesToTime(slot.kickoff.slice(0, 5), slot.duration_minutes))}
                         </span>
                         {!slot.is_active && <Badge>Paused</Badge>}
                       </span>
@@ -162,11 +163,15 @@ function SlotSheet({
   onSaved: () => void
 }) {
   const { activeOrg } = useAuth()
-  const [form, setForm] = useState({
-    weekday: slot?.weekday ?? 0,
-    kickoff: (slot?.kickoff ?? '17:00:00').slice(0, 5),
-    label: slot?.label ?? '',
-    venue: slot?.venue ?? '',
+  const [form, setForm] = useState(() => {
+    const kickoff = (slot?.kickoff ?? '17:00:00').slice(0, 5)
+    return {
+      weekday: slot?.weekday ?? 0,
+      kickoff,
+      finish: addMinutesToTime(kickoff, slot?.duration_minutes ?? 120),
+      label: slot?.label ?? '',
+      venue: slot?.venue ?? '',
+    }
   })
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -176,6 +181,7 @@ function SlotSheet({
       const payload = {
         weekday: form.weekday,
         kickoff: form.kickoff,
+        duration_minutes: minutesBetween(form.kickoff, form.finish),
         label: form.label.trim() || null,
         venue: form.venue.trim() || null,
       }
@@ -216,13 +222,22 @@ function SlotSheet({
           </div>
         </Field>
 
-        <Field label="Kick-off time">
-          <Input
-            type="time"
-            value={form.kickoff}
-            onChange={(e) => setForm({ ...form, kickoff: e.target.value })}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Kick-off time">
+            <Input
+              type="time"
+              value={form.kickoff}
+              onChange={(e) => setForm({ ...form, kickoff: e.target.value })}
+            />
+          </Field>
+          <Field label="Finish time">
+            <Input
+              type="time"
+              value={form.finish}
+              onChange={(e) => setForm({ ...form, finish: e.target.value })}
+            />
+          </Field>
+        </div>
 
         <Field
           label="Name it"

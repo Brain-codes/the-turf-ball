@@ -62,11 +62,14 @@ export async function requireMember(
   const user = await requireUser(req)
   const headerOrg = explicitOrgId ?? req.headers.get('X-Organization-Id') ?? undefined
 
+  // organizations!inner + deleted_at filter: a group in its 30-day deletion
+  // window must be invisible to every member, owner included.
   let query = db
     .from('organization_members')
-    .select('organization_id, role')
+    .select('organization_id, role, organizations!inner(deleted_at)')
     .eq('user_id', user.id)
     .eq('status', 'active')
+    .is('organizations.deleted_at', null)
 
   if (headerOrg) query = query.eq('organization_id', headerOrg)
 

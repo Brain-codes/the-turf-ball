@@ -23,6 +23,15 @@ export function relative(value: string | Date): string {
   return `${formatDistanceToNowStrict(d)} ago`
 }
 
+/** "2 hours remaining" for anything under 24 hours away, else a plain date. */
+export function countdown(value: string | Date): string {
+  const d = typeof value === 'string' ? parseISO(value) : value
+  const ms = d.getTime() - Date.now()
+  if (ms <= 0) return 'Starting now'
+  if (ms > 24 * 60 * 60 * 1000) return `${shortDate(d)} · ${time(d)}`
+  return `${formatDistanceToNowStrict(d)} remaining`
+}
+
 /** Points can be negative and fractional; never show "5.00" where "5" will do. */
 export function points(value: number | string | null | undefined): string {
   const n = Number(value ?? 0)
@@ -46,10 +55,27 @@ export function ordinal(n: number): string {
 
 export const POSITION_LABEL: Record<string, string> = {
   GK: 'Goalkeeper',
-  DEF: 'Defender',
-  MID: 'Midfielder',
-  FWD: 'Forward',
+  RB: 'Right Back',
+  CB: 'Centre Back',
+  LB: 'Left Back',
+  CDM: 'Defensive Mid',
+  CM: 'Centre Mid',
+  CAM: 'Attacking Mid',
+  LM: 'Left Mid',
+  RM: 'Right Mid',
+  LW: 'Left Wing',
+  RW: 'Right Wing',
+  ST: 'Striker',
+  CF: 'Centre Forward',
 }
+
+/** Grouped for position <select> menus, roughly back to front. */
+export const POSITION_GROUPS: { label: string; options: (keyof typeof POSITION_LABEL)[] }[] = [
+  { label: 'Goalkeeper', options: ['GK'] },
+  { label: 'Defence', options: ['RB', 'CB', 'LB'] },
+  { label: 'Midfield', options: ['CDM', 'CM', 'CAM', 'LM', 'RM'] },
+  { label: 'Attack', options: ['LW', 'RW', 'ST', 'CF'] },
+]
 
 export const BAND_LABEL: Record<string, string> = {
   early: 'Early',

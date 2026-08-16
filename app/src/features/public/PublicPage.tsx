@@ -337,13 +337,35 @@ function PublicSkeleton() {
 /* A single player's shareable card                                            */
 /* -------------------------------------------------------------------------- */
 
+interface PlayerStatLine {
+  goals: number
+  assists: number
+  own_goals: number
+  appearances: number
+  clean_sheets: number
+  saves: number
+  yellow_cards?: number
+  red_cards?: number
+  punctuality_score?: number
+  total_points: number
+  rank?: number
+}
+
 interface PublicPlayerData {
   organization: { name: string; slug: string; logo_url: string | null }
   period: { label: string }
   player: { id: string; display_name: string; photo_url: string | null; jersey_number: number | null; position: string | null }
-  stats: { goals: number; assists: number; appearances: number; clean_sheets: number; total_points: number; rank: number } | null
+  stats: PlayerStatLine | null
   awards: { value: number; award_types: { name: string; icon: string }; periods: { label: string } }[]
-  history: { goals: number; assists: number; appearances: number; total_points: number; periods: { label: string } }[]
+  history: (PlayerStatLine & { periods: { label: string } })[]
+  match_log: {
+    session: { id: string; session_date: string; title: string | null } | null
+    goals: number
+    assists: number
+    own_goals: number
+    yellow_cards?: number
+    red_cards?: number
+  }[]
 }
 
 export function PublicPlayerScreen() {
@@ -410,6 +432,31 @@ export function PublicPlayerScreen() {
           </Card>
         )}
 
+        {/* Full stat table — every number the season has on this player */}
+        {data.stats && (
+          <section className="mt-7">
+            <SectionTitle>Full stats — {data.period.label}</SectionTitle>
+            <Card className="divide-y divide-pitch-700 p-0">
+              <StatRow label="Goals" value={data.stats.goals} />
+              <StatRow label="Assists" value={data.stats.assists} />
+              <StatRow label="Own goals" value={data.stats.own_goals} />
+              <StatRow label="Appearances" value={data.stats.appearances} />
+              <StatRow label="Clean sheets" value={data.stats.clean_sheets} />
+              {data.stats.saves > 0 && <StatRow label="Saves" value={data.stats.saves} />}
+              {data.stats.yellow_cards !== undefined && (
+                <StatRow label="Yellow cards" value={data.stats.yellow_cards} />
+              )}
+              {data.stats.red_cards !== undefined && (
+                <StatRow label="Red cards" value={data.stats.red_cards} />
+              )}
+              {data.stats.punctuality_score !== undefined && (
+                <StatRow label="Punctuality" value={points(data.stats.punctuality_score)} />
+              )}
+              <StatRow label="Total points" value={points(data.stats.total_points)} accent />
+            </Card>
+          </section>
+        )}
+
         {data.awards.length > 0 && (
           <section className="mt-7">
             <SectionTitle>Awards</SectionTitle>
@@ -427,6 +474,39 @@ export function PublicPlayerScreen() {
           </section>
         )}
 
+        {/* Match history — every game logged, not just monthly rollups */}
+        {data.match_log.length > 0 && (
+          <section className="mt-7">
+            <SectionTitle>Match history</SectionTitle>
+            <Card className="divide-y divide-pitch-700 p-0">
+              {data.match_log.map((row, i) => (
+                <div key={i} className="flex items-center gap-3 px-3.5 py-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14px] text-chalk">
+                      {row.session?.title || shortDate(row.session?.session_date ?? '')}
+                    </span>
+                    {row.session?.title && (
+                      <span className="block text-[12px] text-chalk-faint">
+                        {shortDate(row.session.session_date)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 text-[12.5px] text-chalk-muted">
+                    {row.goals > 0 && <span>⚽ {row.goals}</span>}
+                    {row.assists > 0 && <span>🅰️ {row.assists}</span>}
+                    {row.own_goals > 0 && <span>🥅 {row.own_goals}</span>}
+                    {!!row.yellow_cards && <span>🟨 {row.yellow_cards}</span>}
+                    {!!row.red_cards && <span>🟥 {row.red_cards}</span>}
+                    {row.goals === 0 && row.assists === 0 && row.own_goals === 0 && !row.yellow_cards && !row.red_cards && (
+                      <span className="text-chalk-faint">Played</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </Card>
+          </section>
+        )}
+
         {data.history.length > 1 && (
           <section className="mt-7">
             <SectionTitle>Month by month</SectionTitle>
@@ -436,6 +516,7 @@ export function PublicPlayerScreen() {
                   <span className="flex-1 text-[14px] text-chalk-muted">{row.periods?.label}</span>
                   <span className="text-[13px] text-chalk-muted">
                     {row.goals}G · {row.assists}A
+                    {row.own_goals > 0 && ` · ${row.own_goals}OG`}
                   </span>
                   <span className="numeric w-12 text-right text-[15px] text-chalk">
                     {points(row.total_points)}
@@ -446,6 +527,17 @@ export function PublicPlayerScreen() {
           </section>
         )}
       </div>
+    </div>
+  )
+}
+
+function StatRow({ label, value, accent }: { label: string; value: number | string; accent?: boolean }) {
+  return (
+    <div className="flex items-center justify-between px-3.5 py-2.5">
+      <span className="text-[14px] text-chalk-muted">{label}</span>
+      <span className={`numeric text-[15px] font-semibold ${accent ? 'text-volt-400' : 'text-chalk'}`}>
+        {value}
+      </span>
     </div>
   )
 }

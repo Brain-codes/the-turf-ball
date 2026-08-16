@@ -4,12 +4,14 @@ import { assertOwned, requireMember } from '../../_shared/auth.ts'
 import { conflict } from '../../_shared/errors.ts'
 import { int, oneOf, str, validate } from '../../_shared/validation.ts'
 
-const POSITIONS = ['GK', 'DEF', 'MID', 'FWD'] as const
+const POSITIONS = [
+  'GK', 'RB', 'CB', 'LB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF',
+] as const
 const FEET = ['left', 'right', 'both'] as const
 const STATUSES = ['active', 'inactive', 'guest'] as const
 
 const FIELDS = [
-  'first_name', 'last_name', 'display_name', 'jersey_number',
+  'first_name', 'last_name', 'display_name', 'whatsapp_nickname', 'jersey_number',
   'position', 'preferred_foot', 'photo_url', 'status',
 ] as const
 
@@ -23,6 +25,7 @@ export async function updatePlayer(ctx: Ctx): Promise<Response> {
     first_name: [str(1, 40)],
     last_name: [str(0, 40)],
     display_name: [str(1, 40)],
+    whatsapp_nickname: [str(0, 40)],
     jersey_number: [int(0, 99)],
     position: [oneOf(POSITIONS)],
     preferred_foot: [oneOf(FEET)],

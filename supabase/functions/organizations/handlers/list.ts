@@ -7,9 +7,10 @@ export async function listOrganizations(ctx: Ctx): Promise<Response> {
 
   const { data, error } = await ctx.db
     .from('organization_members')
-    .select('role, organizations(*)')
+    .select('role, organizations!inner(*)')
     .eq('user_id', user.id)
     .eq('status', 'active')
+    .is('organizations.deleted_at', null)
 
   if (error) throw new Error(error.message)
 

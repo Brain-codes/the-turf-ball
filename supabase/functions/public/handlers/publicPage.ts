@@ -2,8 +2,11 @@
  * The public share page. No authentication — this is the link dropped in a
  * WhatsApp group, opened on mobile data by twenty people at once.
  *
- * Three rules govern everything here:
- *   1. Read-only. There is no write path in this function at all.
+ * Three rules govern everything in THIS file (the leaderboard/session
+ * views):
+ *   1. Read-only. (The `public` function as a whole now has one narrow
+ *      write path for the self-serve player invite — see publicJoin.ts —
+ *      but nothing in this file touches it.)
  *   2. Respect the organizer's visibility settings — if they hid photos or
  *      cards, this endpoint must not leak them.
  *   3. Never expose anything internal: no user accounts, no emails, no audit
@@ -23,11 +26,13 @@ interface PageContext {
 async function loadPage(ctx: Ctx, slug: string): Promise<PageContext> {
   const { data } = await ctx.db
     .from('public_pages')
-    .select('*, organizations(id, name, short_name, slug, logo_url, description, location, venue, format, timezone)')
+    .select('*, organizations!inner(id, name, short_name, slug, logo_url, description, location, venue, format, timezone, deleted_at)')
     .eq('slug', slug)
+    .is('organizations.deleted_at', null)
     .maybeSingle()
 
-  // An unpublished page is indistinguishable from one that never existed.
+  // An unpublished page — or one whose owner is in their 30-day deletion
+  // window — is indistinguishable from one that never existed.
   if (!data || !data.is_published) throw notFound('That page is not available')
 
   const org = data.organizations as Record<string, unknown>
@@ -52,8 +57,33 @@ function projectStat(row: Record<string, unknown>, page: Record<string, unknown>
     player: projectPlayer(row.players as Record<string, unknown>, page),
     appearances: row.appearances,
     goals: row.goals,
+    own_goals: row.own_goals,
     assists: row.assists,
     clean_sheets: row.clean_sheets,
+    saves: row.saves,
+    total_points: row.total_points,
+  }
+  if (page.show_cards) {
+    base.yellow_cards = row.yellow_cards
+    base.red_cards = row.red_cards
+  }
+  if (page.show_punctuality) {
+    base.punctuality_score = row.punctuality_score
+  }
+  return base
+}
+
+/** Same shape as projectStat, minus the player join — used for the month-by-month history rows. */
+function projectHistoryRow(row: Record<string, unknown>, page: Record<string, unknown>) {
+  const base: Record<string, unknown> = {
+    periods: row.periods,
+    rank: row.rank,
+    appearances: row.appearances,
+    goals: row.goals,
+    own_goals: row.own_goals,
+    assists: row.assists,
+    clean_sheets: row.clean_sheets,
+    saves: row.saves,
     total_points: row.total_points,
   }
   if (page.show_cards) {
@@ -123,6 +153,10 @@ export async function getPublicPage(ctx: Ctx): Promise<Response> {
       .select('id, session_date, title, status, matches(sequence, side_a_label, side_b_label, side_a_score, side_b_score)')
       .eq('period_id', period.id)
       .eq('status', 'completed')
+      // The counted rule (HANDOFF.md feature 3): a flagged, unapproved
+      // session never appears on the public page — it happened, but nothing
+      // was recorded, so there is nothing to show.
+      .or('flagged_inactive_at.is.null,approved_at.not.is.null')
       .order('session_date', { ascending: false })
       .limit(6)
     sessions = data ?? []
@@ -141,6 +175,7 @@ export async function getPublicPage(ctx: Ctx): Promise<Response> {
     .select('id', { count: 'exact', head: true })
     .eq('period_id', period.id)
     .eq('status', 'completed')
+    .or('flagged_inactive_at.is.null,approved_at.not.is.null')
 
   // Fire-and-forget view counter, incremented in the database so twenty people
   // opening the link at once cannot overwrite each other's count. Never awaited
@@ -226,10 +261,52 @@ export async function getPublicPlayer(ctx: Ctx): Promise<Response> {
 
   const { data: history } = await ctx.db
     .from('player_period_stats')
-    .select('goals, assists, appearances, total_points, periods(label, year, month)')
+    .select('goals, own_goals, assists, clean_sheets, saves, yellow_cards, red_cards, punctuality_score, appearances, total_points, rank, periods(label, year, month)')
     .eq('player_id', playerId)
     .order('computed_at', { ascending: false })
     .limit(12)
+
+  // Every session this player has appeared in, most recent first — the
+  // per-match log a "full history" needs, not just monthly rollups.
+  const { data: appearances } = await ctx.db
+    .from('match_players')
+    .select('match_id, side, matches!inner(id, session_id, sequence, side_a_score, side_b_score, sessions(id, session_date, title))')
+    .eq('player_id', playerId)
+    .eq('organization_id', organizationId)
+    .limit(20)
+
+  const matchIds = (appearances ?? []).map((a) => (a.matches as unknown as { id: string }).id)
+  const { data: matchEvents } = matchIds.length
+    ? await ctx.db
+        .from('match_events')
+        .select('match_id, event_type, related_player_id')
+        .eq('player_id', playerId)
+        .in('match_id', matchIds)
+        .is('voided_at', null)
+    : { data: [] }
+
+  const matchLog = (appearances ?? [])
+    .map((a) => {
+      const match = a.matches as unknown as {
+        id: string
+        sequence: number
+        side_a_score: number
+        side_b_score: number
+        sessions: { id: string; session_date: string; title: string | null } | null
+      }
+      const events = (matchEvents ?? []).filter((e) => e.match_id === match.id)
+      return {
+        session: match.sessions,
+        goals: events.filter((e) => e.event_type === 'goal').length,
+        assists: events.filter((e) => e.event_type === 'assist').length,
+        own_goals: events.filter((e) => e.event_type === 'own_goal').length,
+        yellow_cards: page.show_cards ? events.filter((e) => e.event_type === 'yellow_card').length : undefined,
+        red_cards: page.show_cards ? events.filter((e) => e.event_type === 'red_card').length : undefined,
+      }
+    })
+    .filter((row) => row.session)
+    .sort((a, b) => (b.session!.session_date > a.session!.session_date ? 1 : -1))
+    .slice(0, 12)
 
   return successResponse({
     organization: { name: organization.name, slug: organization.slug, logo_url: organization.logo_url },
@@ -237,7 +314,8 @@ export async function getPublicPlayer(ctx: Ctx): Promise<Response> {
     player: projectPlayer(player, page),
     stats: stats ? projectStat({ ...stats, players: player }, page) : null,
     awards: awards ?? [],
-    history: history ?? [],
+    history: (history ?? []).map((row) => projectHistoryRow(row, page)),
+    match_log: matchLog,
   })
 }
 

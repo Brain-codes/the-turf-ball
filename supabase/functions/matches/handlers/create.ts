@@ -7,7 +7,7 @@ import { int, isArray, required, str, validate } from '../../_shared/validation.
 interface Body {
   session_id: string
   side_a: string[]
-  side_b: string[]
+  side_b?: string[]
   goalkeeper_a?: string
   goalkeeper_b?: string
   duration_minutes?: number
@@ -21,8 +21,11 @@ export async function createMatch(ctx: Ctx): Promise<Response> {
 
   validate(body as unknown as Record<string, unknown>, {
     session_id: [required, str(36, 36)],
-    side_a: [required, isArray(1, 11)],
-    side_b: [required, isArray(1, 11)],
+    side_a: [required, isArray(1, 22)],
+    // Team splitting is no longer part of the live flow — everyone present
+    // goes on side_a and side_b stays empty. Still accepted (not removed)
+    // so a two-team match can be created another way later if ever needed.
+    side_b: [isArray(0, 22)],
     duration_minutes: [int(1, 180)],
     side_a_label: [str(1, 20)],
     side_b_label: [str(1, 20)],
@@ -30,9 +33,11 @@ export async function createMatch(ctx: Ctx): Promise<Response> {
 
   await assertOwned(ctx.db, 'sessions', body.session_id, member.organizationId)
 
+  const sideB = body.side_b ?? []
+
   // A player cannot be on both teams. Easy to do by accident when tapping
   // quickly, and it would silently corrupt every stat for that match.
-  const overlap = body.side_a.filter((id) => body.side_b.includes(id))
+  const overlap = body.side_a.filter((id) => sideB.includes(id))
   if (overlap.length > 0) {
     throw badRequest('A player cannot be on both sides')
   }
@@ -71,7 +76,7 @@ export async function createMatch(ctx: Ctx): Promise<Response> {
       side: 'a' as const,
       is_goalkeeper: id === body.goalkeeper_a,
     })),
-    ...body.side_b.map((id) => ({
+    ...sideB.map((id) => ({
       organization_id: member.organizationId,
       match_id: match.id,
       player_id: id,

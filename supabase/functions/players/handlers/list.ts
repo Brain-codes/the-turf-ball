@@ -15,8 +15,11 @@ export async function listPlayers(ctx: Ctx): Promise<Response> {
     .select('*', { count: 'exact' })
     .eq('organization_id', member.organizationId)
 
+  // Pending self-submissions are not real roster members yet — they never
+  // show up in the default squad list, only when someone explicitly asks
+  // for status=pending (the admin approval queue).
   if (status) q = q.eq('status', status)
-  else q = q.neq('status', 'inactive')
+  else q = q.not('status', 'in', '(inactive,pending)')
 
   if (search) q = q.ilike('display_name', `%${search}%`)
 

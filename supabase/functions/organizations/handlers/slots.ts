@@ -29,12 +29,11 @@ function normaliseTime(value: unknown): string | null {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
 }
 
-/** A readable name when the organizer hasn't given one: "Sunday 5:00 PM". */
+/** A readable name when the organizer hasn't given one: "Evening Sunday Session". */
 function autoLabel(weekday: number, kickoff: string): string {
-  const [h, m] = kickoff.split(':').map(Number)
-  const period = h < 12 ? 'AM' : 'PM'
-  const hour12 = h % 12 === 0 ? 12 : h % 12
-  return `${DAY_NAMES[weekday]} ${hour12}:${String(m).padStart(2, '0')} ${period}`
+  const [h] = kickoff.split(':').map(Number)
+  const timeOfDay = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening'
+  return `${timeOfDay} ${DAY_NAMES[weekday]} Session`
 }
 
 export async function listSlots(ctx: Ctx): Promise<Response> {
@@ -94,11 +93,16 @@ export async function createSlot(ctx: Ctx): Promise<Response> {
   const kickoff = normaliseTime(body.kickoff)
   if (!kickoff) throw badRequest('That kick-off time is not valid')
 
+  // A name is always stored, even when the organizer doesn't type one — so
+  // it shows up immediately in Settings > Schedule instead of "No name",
+  // and can still be renamed later like any other slot.
+  const label = body.label ? String(body.label).trim() : autoLabel(Number(body.weekday), kickoff)
+
   const { data, error } = await ctx.db
     .from('session_slots')
     .insert({
       organization_id: member.organizationId,
-      label: body.label ? String(body.label).trim() : null,
+      label,
       weekday: Number(body.weekday),
       kickoff,
       venue: body.venue ? String(body.venue).trim() : null,
@@ -116,6 +120,16 @@ export async function createSlot(ctx: Ctx): Promise<Response> {
   }
 
   await audit(ctx.db, member.organizationId, member.user.id, 'slot.create', 'session_slot', data.id)
+
+  // Materialize immediately rather than waiting for the next 15-minute cron
+  // tick — the organizer expects to see the real session the moment they add
+  // a slot, not up to 15 minutes later. Runs the same tested job used by the
+  // schedule; best-effort, since a materialization hiccup shouldn't block
+  // the slot itself from being saved (the cron job will catch it regardless).
+  const { error: materializeError } = await ctx.db.rpc('materialize_and_flag_sessions')
+  if (materializeError) {
+    ctx.log.error('materialize_and_flag_sessions failed after slot create', { error: materializeError.message })
+  }
 
   return successResponse(
     { ...data, display_label: data.label || autoLabel(data.weekday, data.kickoff) },
@@ -167,6 +181,26 @@ export async function updateSlot(ctx: Ctx): Promise<Response> {
   }
   if (!data) throw notFound('That session time was not found')
 
+  // Sessions already materialized from this slot are frozen copies of its
+  // old day/time/name/venue — changing the slot doesn't retroactively touch
+  // them. Drop the ones nothing has happened on yet (still 'scheduled') and
+  // let the materializer regenerate them fresh from the updated slot, same
+  // as it would on its next 15-minute tick, just instant. History-bearing
+  // sessions (live/completed) are untouched, exactly like on delete.
+  const { error: pruneError } = await ctx.db
+    .from('sessions')
+    .delete()
+    .eq('slot_id', slotId)
+    .eq('organization_id', member.organizationId)
+    .eq('status', 'scheduled')
+
+  if (pruneError) throw new Error(pruneError.message)
+
+  const { error: materializeError } = await ctx.db.rpc('materialize_and_flag_sessions')
+  if (materializeError) {
+    ctx.log.error('materialize_and_flag_sessions failed after slot update', { error: materializeError.message })
+  }
+
   return successResponse(
     { ...data, display_label: data.label || autoLabel(data.weekday, data.kickoff) },
     'Schedule updated',
@@ -177,10 +211,28 @@ export async function updateSlot(ctx: Ctx): Promise<Response> {
  * Remove a slot. Sessions already played under it keep their history — the
  * foreign key nulls out rather than cascading, so deleting "Tuesday Evening"
  * never deletes the goals scored on a Tuesday.
+ *
+ * But a session that's still just `scheduled` (materialized in advance by
+ * the auto-session job, kickoff hasn't happened yet) isn't history — it's a
+ * future promise the organizer just withdrew, with nothing recorded against
+ * it yet. Deleted outright rather than merely cancelled, so it disappears
+ * from /app/sessions entirely instead of lingering as a dead entry. Cascade
+ * (session_attendance, matches) is safe here precisely because nothing real
+ * has happened on it — a session with any recorded activity would already
+ * have moved past 'scheduled'.
  */
 export async function deleteSlot(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db, 'admin', ctx.segments[0])
   const slotId = ctx.segments[2]
+
+  const { error: pruneError } = await ctx.db
+    .from('sessions')
+    .delete()
+    .eq('slot_id', slotId)
+    .eq('organization_id', member.organizationId)
+    .eq('status', 'scheduled')
+
+  if (pruneError) throw new Error(pruneError.message)
 
   const { data, error } = await ctx.db
     .from('session_slots')

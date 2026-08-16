@@ -22,11 +22,14 @@ export async function dashboard(ctx: Ctx): Promise<Response> {
     .eq('organization_id', member.organizationId)
     .eq('status', 'active')
 
+  // The counted rule (HANDOFF.md feature 3): a session counts unless it was
+  // flagged inactive by the scheduler and never approved by an admin.
   const { count: sessionCount } = await ctx.db
     .from('sessions')
     .select('id', { count: 'exact', head: true })
     .eq('period_id', period.id)
     .eq('status', 'completed')
+    .or('flagged_inactive_at.is.null,approved_at.not.is.null')
 
   const { data: recentSessions } = await ctx.db
     .from('sessions')

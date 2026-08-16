@@ -15,7 +15,7 @@ import {
   type SelectHTMLAttributes,
 } from 'react'
 import { cn } from '@/lib/cn'
-import { initials } from '@/lib/format'
+import { initials, POSITION_GROUPS, POSITION_LABEL } from '@/lib/format'
 
 /* -------------------------------------------------------------------------- */
 /* Button                                                                      */
@@ -256,6 +256,24 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
       >
         {children}
       </select>
+    )
+  },
+)
+
+/** A position <select> grouped GK/Defence/Midfield/Attack, real position codes (RB, CDM, CAM…). */
+export const PositionSelect = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  function PositionSelect({ children, ...rest }, ref) {
+    return (
+      <Select ref={ref} {...rest}>
+        {children ?? <option value="">Not set</option>}
+        {POSITION_GROUPS.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.options.map((code) => (
+              <option key={code} value={code}>{POSITION_LABEL[code]} ({code})</option>
+            ))}
+          </optgroup>
+        ))}
+      </Select>
     )
   },
 )
