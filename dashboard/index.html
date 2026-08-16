@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Turf Ball — Build Progress</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+<style>
+  :root{
+    --void:#050706; --s900:#0B1210; --s800:#111C18; --s700:#1A2B24;
+    --turf:#0F7B4F; --volt:#B4FF39; --chalk:#F4F7F5; --muted:#8A9691;
+    --amber:#FFC53D; --red:#FF4D4D; --blue:#3DA9FC;
+    --r:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--void); color:var(--chalk);
+    font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:32px 20px 80px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:900px;margin:0 auto}
+
+  /* header */
+  header{margin-bottom:28px}
+  .eyebrow{color:var(--volt);font-size:12px;letter-spacing:.18em;text-transform:uppercase;font-weight:700}
+  h1{font-size:clamp(28px,6vw,42px);line-height:1.1;margin:8px 0 4px;letter-spacing:-.02em}
+  .tagline{color:var(--muted);font-size:15px}
+  .updated{color:var(--muted);font-size:13px;margin-top:10px}
+
+  /* overall bar */
+  .overall{background:var(--s900);border:1px solid var(--s700);border-radius:var(--r);padding:22px;margin:24px 0 28px}
+  .overall-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .pct{font-size:44px;font-weight:800;letter-spacing:-.03em;line-height:1}
+  .pct span{font-size:20px;color:var(--muted);font-weight:600}
+  .counts{color:var(--muted);font-size:14px}
+  .bar{height:12px;background:var(--s700);border-radius:99px;overflow:hidden;margin-top:16px}
+  .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--turf),var(--volt));border-radius:99px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+  .now{margin-top:14px;font-size:14px;color:var(--chalk);display:flex;gap:9px;align-items:center}
+  .dot{width:8px;height:8px;border-radius:99px;background:var(--volt);flex:none;animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.75)}}
+
+  /* alerts */
+  .alert{border-radius:var(--r);padding:16px 18px;margin-bottom:20px;border:1px solid}
+  .alert.block{background:rgba(255,77,77,.09);border-color:rgba(255,77,77,.4)}
+  .alert h3{font-size:14px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px;color:var(--red)}
+  .alert li{list-style:none;font-size:14px;padding:6px 0;border-top:1px solid rgba(255,255,255,.06)}
+  .alert li:first-of-type{border-top:0}
+
+  /* sections */
+  h2.sec{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:32px 0 14px}
+
+  /* phases */
+  .phase{background:var(--s900);border:1px solid var(--s700);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
+  .phase.doing{border-color:rgba(180,255,57,.45)}
+  .ph-head{display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer;user-select:none}
+  .ph-head:hover{background:var(--s800)}
+  .chev{color:var(--muted);font-size:12px;transition:transform .2s;flex:none;width:12px}
+  .phase.open .chev{transform:rotate(90deg)}
+  .ph-main{flex:1;min-width:0}
+  .ph-name{font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ph-plain{color:var(--muted);font-size:13.5px;margin-top:3px}
+  .star{color:var(--volt);font-size:12px}
+  .mini{width:70px;flex:none}
+  .mini .bar{height:6px;margin:0}
+  .mini em{display:block;font-style:normal;font-size:11px;color:var(--muted);text-align:right;margin-top:5px}
+
+  /* tasks */
+  .tasks{display:none;padding:0 18px 14px}
+  .phase.open .tasks{display:block}
+  .task{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--s700);align-items:flex-start}
+  .box{width:19px;height:19px;border-radius:6px;flex:none;margin-top:2px;display:grid;place-items:center;font-size:11px;font-weight:800;border:1.5px solid var(--s700);color:var(--void)}
+  .box.done{background:var(--volt);border-color:var(--volt)}
+  .box.doing{border-color:var(--volt);color:var(--volt);background:transparent}
+  .box.blocked{background:var(--red);border-color:var(--red);color:#fff}
+  .t-body{flex:1;min-width:0}
+  .t-name{font-size:14.5px;font-weight:600}
+  .task.done .t-name{color:var(--muted)}
+  .t-plain{color:var(--muted);font-size:13.5px;margin-top:2px}
+  .t-tech{display:none;margin-top:9px;padding:10px 12px;background:var(--void);border-left:2px solid var(--turf);border-radius:0 8px 8px 0;font-size:12.5px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.6}
+  .t-tech.show{display:block}
+  .qmark{flex:none;width:22px;height:22px;border-radius:99px;border:1px solid var(--s700);background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;line-height:1}
+  .qmark:hover{border-color:var(--volt);color:var(--volt)}
+  .qmark.on{background:var(--volt);border-color:var(--volt);color:var(--void)}
+
+  /* log */
+  .log{background:var(--s900);border:1px solid var(--s700);border-radius:var(--r);padding:6px 18px}
+  .log li{list-style:none;display:flex;gap:14px;padding:12px 0;border-top:1px solid var(--s700);font-size:14px}
+  .log li:first-child{border-top:0}
+  .log time{color:var(--muted);font-size:12.5px;flex:none;width:88px;padding-top:1px}
+  .k{flex:none;width:7px;height:7px;border-radius:99px;margin-top:7px;background:var(--turf)}
+  .k.done{background:var(--volt)} .k.issue{background:var(--red)} .k.note{background:var(--muted)}
+
+  /* decisions */
+  .dec{background:var(--s900);border:1px solid var(--s700);border-radius:var(--r);padding:6px 18px}
+  .dec li{list-style:none;padding:13px 0;border-top:1px solid var(--s700)}
+  .dec li:first-child{border-top:0}
+  .dec b{display:block;font-size:14.5px;font-weight:600}
+  .dec span{color:var(--muted);font-size:13.5px}
+  .tag{display:inline-block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:99px;margin-left:8px;vertical-align:middle;font-weight:700}
+  .tag.open{background:rgba(255,197,61,.15);color:var(--amber)}
+  .tag.set{background:rgba(180,255,57,.13);color:var(--volt)}
+
+  footer{color:var(--muted);font-size:12.5px;text-align:center;margin-top:40px;line-height:1.8}
+  @media(max-width:560px){ .mini{width:52px} .log time{width:74px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Build Progress</div>
+    <h1 id="title"></h1>
+    <div class="tagline" id="tagline"></div>
+    <div class="updated" id="updated"></div>
+  </header>
+
+  <div class="overall">
+    <div class="overall-top">
+      <div class="pct"><span id="pct">0</span><span>%</span></div>
+      <div class="counts" id="counts"></div>
+    </div>
+    <div class="bar"><i id="mainbar" style="width:0"></i></div>
+    <div class="now"><span class="dot"></span><span id="now"></span></div>
+  </div>
+
+  <div id="blockers"></div>
+
+  <h2 class="sec">Phases</h2>
+  <div id="phases"></div>
+
+  <h2 class="sec">Build log</h2>
+  <ul class="log" id="log"></ul>
+
+  <h2 class="sec">Decisions</h2>
+  <ul class="dec" id="dec"></ul>
+
+  <footer>
+    Tap any phase to open it &middot; tap <b>?</b> for the technical detail<br>
+    Updated by Claude as the build progresses
+  </footer>
+</div>
+
+<script src="progress-data.js"></script>
+<script>
+(function(){
+  var P = window.PROGRESS;
+  var esc = function(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; };
+
+  document.getElementById('title').textContent   = P.project;
+  document.getElementById('tagline').textContent = P.tagline;
+  document.getElementById('updated').textContent = 'Last updated ' + P.updated;
+  document.getElementById('now').textContent     = 'Right now: ' + P.currentlyDoing;
+
+  // ---- overall progress: doing counts as half a task
+  var all = 0, score = 0, done = 0;
+  P.phases.forEach(function(ph){
+    ph.tasks.forEach(function(t){
+      all++;
+      if (t.status === 'done'){ score += 1; done++; }
+      else if (t.status === 'doing'){ score += 0.5; }
+    });
+  });
+  var pct = all ? Math.round(score / all * 100) : 0;
+  document.getElementById('pct').textContent = pct;
+  document.getElementById('counts').textContent = done + ' of ' + all + ' tasks complete';
+  setTimeout(function(){ document.getElementById('mainbar').style.width = pct + '%'; }, 60);
+
+  // ---- blockers
+  if (P.blockers && P.blockers.length){
+    document.getElementById('blockers').innerHTML =
+      '<div class="alert block"><h3>Needs attention</h3><ul>' +
+      P.blockers.map(function(b){ return '<li>' + esc(b) + '</li>'; }).join('') +
+      '</ul></div>';
+  }
+
+  // ---- phases
+  var MARK = { done:'✓', doing:'●', blocked:'!', todo:'' };
+  document.getElementById('phases').innerHTML = P.phases.map(function(ph, pi){
+    var t = ph.tasks.length;
+    var d = ph.tasks.filter(function(x){ return x.status === 'done'; }).length;
+    var p = t ? Math.round(d / t * 100) : 0;
+    var isDoing = ph.status === 'doing';
+
+    var tasks = ph.tasks.map(function(task, ti){
+      return '<div class="task ' + esc(task.status) + '">' +
+        '<div class="box ' + esc(task.status) + '">' + (MARK[task.status] || '') + '</div>' +
+        '<div class="t-body">' +
+          '<div class="t-name">' + esc(task.name) + '</div>' +
+          '<div class="t-plain">' + esc(task.plain) + '</div>' +
+          '<div class="t-tech" id="tech-' + pi + '-' + ti + '">' + esc(task.tech) + '</div>' +
+        '</div>' +
+        '<button class="qmark" data-tech="tech-' + pi + '-' + ti + '" title="Technical detail">?</button>' +
+      '</div>';
+    }).join('');
+
+    return '<div class="phase ' + esc(ph.status) + (isDoing ? ' open' : '') + '" data-phase>' +
+      '<div class="ph-head" data-toggle>' +
+        '<span class="chev">▶</span>' +
+        '<div class="ph-main">' +
+          '<div class="ph-name">' + esc(ph.name) +
+            (ph.starred ? '<span class="star">★ most important</span>' : '') + '</div>' +
+          '<div class="ph-plain">' + esc(ph.plain) + '</div>' +
+        '</div>' +
+        '<div class="mini"><div class="bar"><i style="width:' + p + '%"></i></div><em>' + d + '/' + t + '</em></div>' +
+      '</div>' +
+      '<div class="tasks">' + tasks + '</div>' +
+    '</div>';
+  }).join('');
+
+  // ---- log (newest first)
+  document.getElementById('log').innerHTML = P.log.slice().reverse().map(function(e){
+    return '<li><span class="k ' + esc(e.kind || 'note') + '"></span>' +
+           '<time>' + esc(e.time) + '</time><span>' + esc(e.text) + '</span></li>';
+  }).join('');
+
+  // ---- decisions
+  document.getElementById('dec').innerHTML = P.decisions.map(function(d){
+    return '<li><b>' + esc(d.q) +
+      '<span class="tag ' + (d.open ? 'open">your call' : 'set">decided') + '</span></b>' +
+      '<span>' + esc(d.a) + '</span></li>';
+  }).join('');
+
+  // ---- interactions
+  document.addEventListener('click', function(e){
+    var head = e.target.closest('[data-toggle]');
+    if (head){ head.closest('[data-phase]').classList.toggle('open'); return; }
+
+    var q = e.target.closest('.qmark');
+    if (q){
+      document.getElementById(q.dataset.tech).classList.toggle('show');
+      q.classList.toggle('on');
+    }
+  });
+})();
+</script>
+</body>
+</html>
