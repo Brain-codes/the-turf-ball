@@ -241,7 +241,7 @@ function QuickAddForm({ onDone }: { onDone: () => void }) {
         rows={7}
         autoFocus
         placeholder={'Ade\nMike\nJohn'}
-        className="w-full resize-none rounded-xl border border-pitch-700 bg-pitch-900 p-3.5 text-[15px] leading-8 text-chalk placeholder:text-chalk-faint focus:border-turf-400 focus:outline-none"
+        className="w-full resize-none rounded-xl border border-pitch-700 bg-pitch-900 p-3.5 text-[16px] leading-8 text-chalk placeholder:text-chalk-faint focus:border-turf-400 focus:outline-none"
       />
       {error && <p className="mt-2 text-[14px] text-card-red">{error}</p>}
       <Button

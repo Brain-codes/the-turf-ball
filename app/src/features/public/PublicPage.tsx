@@ -103,7 +103,7 @@ export function PublicPageScreen() {
               <select
                 value={periodId || data.period.id}
                 onChange={(e) => setPeriodId(e.target.value)}
-                className="rounded-full border border-pitch-700 bg-pitch-900 px-3.5 py-1.5 text-[13px] text-chalk focus:outline-none"
+                className="rounded-full border border-pitch-700 bg-pitch-900 px-3.5 py-1.5 text-[16px] text-chalk focus:outline-none"
               >
                 {data.periods.map((p) => (
                   <option key={p.id} value={p.id}>{p.label}</option>

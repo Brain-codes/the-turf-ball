@@ -125,7 +125,7 @@ export function GeneralSettings() {
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
           rows={3}
-          className="w-full resize-none rounded-lg border border-pitch-700 bg-pitch-900 p-3 text-[15px] text-chalk focus:border-turf-400 focus:outline-none"
+          className="w-full resize-none rounded-lg border border-pitch-700 bg-pitch-900 p-3 text-[16px] text-chalk focus:border-turf-400 focus:outline-none"
         />
       </Field>
       <Button size="lg" fullWidth loading={save.isPending} onClick={() => save.mutate()}>
