@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { api } from '@/services/client'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
-import { Badge, Card, EmptyState, ErrorState, PlayerAvatar, RankBadge, Select, Skeleton } from '@/components/ui'
+import { Badge, Card, EmptyState, ErrorState, PlayerAvatar, PlayerName, RankBadge, Select, Skeleton } from '@/components/ui'
 import { points } from '@/lib/format'
 import type { Period, PlayerStats } from '@/types'
 
@@ -88,9 +88,11 @@ export function LeaderboardScreen() {
                       size="sm"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] text-chalk">
-                        {row.players?.display_name}
-                      </span>
+                      <PlayerName
+                        name={row.players?.display_name ?? ''}
+                        whatsappNickname={row.players?.whatsapp_nickname}
+                        className="block text-[15px] text-chalk"
+                      />
                       <span className="text-[12.5px] text-chalk-muted">
                         {row.appearances} app{row.appearances === 1 ? '' : 's'}
                       </span>

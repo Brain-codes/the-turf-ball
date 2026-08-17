@@ -18,12 +18,12 @@ export async function getMatch(ctx: Ctx): Promise<Response> {
 
   const { data: players } = await ctx.db
     .from('match_players')
-    .select('*, players(id, display_name, photo_url, jersey_number, position)')
+    .select('*, players(id, display_name, whatsapp_nickname, photo_url, jersey_number, position)')
     .eq('match_id', matchId)
 
   const { data: events } = await ctx.db
     .from('match_events')
-    .select('*, players!match_events_player_id_fkey(display_name, jersey_number)')
+    .select('*, players!match_events_player_id_fkey(display_name, whatsapp_nickname, jersey_number)')
     .eq('match_id', matchId)
     .is('voided_at', null)
     .order('created_at', { ascending: true })

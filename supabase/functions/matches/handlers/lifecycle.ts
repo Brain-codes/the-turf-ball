@@ -36,6 +36,44 @@ export async function startMatch(ctx: Ctx): Promise<Response> {
 }
 
 /**
+ * Resume a match that already went to full time, instead of starting a
+ * brand-new one for the rest of the session. A session is one continuous
+ * activity — restarting used to create a second `matches` row with its own
+ * roster and event list, which reset the on-screen clock and goal totals to
+ * zero even though the players never left the pitch. Reusing the same match
+ * keeps the clock, events and roster exactly where they were.
+ *
+ * Clean sheets awarded at the earlier finish were only ever provisional
+ * against that moment's score — cleared here and re-decided at the next
+ * real finish, same as finishMatch already does when called twice.
+ */
+export async function resumeMatch(ctx: Ctx): Promise<Response> {
+  const member = await requireMember(ctx.req, ctx.db)
+  const matchId = ctx.segments[0]
+  await assertOwned(ctx.db, 'matches', matchId, member.organizationId)
+
+  await ctx.db
+    .from('match_events')
+    .delete()
+    .eq('match_id', matchId)
+    .eq('event_type', 'clean_sheet')
+
+  const { data, error } = await ctx.db
+    .from('matches')
+    .update({ status: 'live', ended_at: null })
+    .eq('id', matchId)
+    .select('*, sessions(id, period_id)')
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  const session = data.sessions as { id: string; period_id: string }
+  await recomputeStats(ctx.db, session.period_id)
+
+  return successResponse(data, 'Match resumed')
+}
+
+/**
  * Finish a match and settle clean sheets.
  *
  * Who gets a clean sheet is a genuine disagreement between football groups, so
@@ -133,10 +171,13 @@ export async function finishMatch(ctx: Ctx): Promise<Response> {
     match_id: matchId,
   })
 
-  return successResponse(
-    updated,
-    `Full time: ${updated.side_a_label} ${updated.side_a_score} - ${updated.side_b_score} ${updated.side_b_label}`,
-  )
+  // One squad, not two teams — lead with goals scored; only mention own
+  // goals (side_b_score) if there were any.
+  const finishMessage = updated.side_b_score > 0
+    ? `Full time: ${updated.side_a_score} scored, ${updated.side_b_score} own goal${updated.side_b_score === 1 ? '' : 's'}`
+    : `Full time: ${updated.side_a_score} scored`
+
+  return successResponse(updated, finishMessage)
 }
 
 /** Change the sides mid-session — people arrive late and teams get rebalanced. */

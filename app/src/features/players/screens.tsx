@@ -6,7 +6,7 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input,
-  PlayerAvatar, PositionSelect, SectionTitle, Select, Skeleton, StatTile,
+  PlayerAvatar, PlayerName, PositionSelect, SectionTitle, Select, Skeleton, StatTile,
 } from '@/components/ui'
 import { FadeIn, Sheet, Stagger, StaggerItem } from '@/components/motion'
 import { POSITION_LABEL, points, shortDate } from '@/lib/format'
@@ -70,7 +70,11 @@ export function PlayersScreen() {
             {pending.map((p) => (
               <div key={p.id} className="flex items-center gap-3 px-3.5 py-3">
                 <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
-                <span className="min-w-0 flex-1 truncate text-[14px] text-chalk">{p.display_name}</span>
+                <PlayerName
+                  name={p.display_name}
+                  whatsappNickname={p.whatsapp_nickname}
+                  className="flex-1 text-[14px] text-chalk"
+                />
                 <Button
                   size="sm"
                   variant="ghost"
@@ -126,7 +130,11 @@ export function PlayersScreen() {
                   <PlayerAvatar name={player.display_name} photoUrl={player.photo_url} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className="truncate text-[15px] text-chalk">{player.display_name}</span>
+                      <PlayerName
+                        name={player.display_name}
+                        whatsappNickname={player.whatsapp_nickname}
+                        className="text-[15px] text-chalk"
+                      />
                       {player.status === 'guest' && <Badge>Guest</Badge>}
                     </span>
                     <span className="text-[12.5px] text-chalk-muted">
@@ -397,6 +405,9 @@ export function PlayerProfileScreen() {
           className="mx-auto"
         />
         <h1 className="mt-4 text-3xl">{data.display_name}</h1>
+        {data.whatsapp_nickname && data.whatsapp_nickname.trim() !== data.display_name.trim() && (
+          <p className="mt-0.5 text-[12px] text-chalk-faint/70">WhatsApp: {data.whatsapp_nickname}</p>
+        )}
         <p className="mt-1 text-[14px] text-chalk-muted">
           {data.position ? POSITION_LABEL[data.position] : 'No position set'}
           {data.jersey_number !== null && ` · #${data.jersey_number}`}

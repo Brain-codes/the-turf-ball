@@ -135,7 +135,7 @@
 
   /* Match-day targets. Outdoors, one-handed, possibly wet hands. */
   .tap-target {
-    min-height: 56px;
+    min-height: 26px;
     min-width: 56px;
   }
 

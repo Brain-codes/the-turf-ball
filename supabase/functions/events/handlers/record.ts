@@ -20,8 +20,10 @@ import { int, isArray, oneOf, required, str, validate } from '../../_shared/vali
 import {
   assertPeriodOpen,
   broadcast,
+  editWindowOpen,
   recomputeStats,
   refreshMatchScore,
+  touchSessionActivity,
 } from '../../_shared/helpers.ts'
 
 const EVENT_TYPES = [
@@ -45,24 +47,26 @@ interface MatchContext {
   session_id: string
   period_id: string
   status: string
+  session_ended_at: string | null
 }
 
 async function loadMatch(ctx: Ctx, matchId: string, organizationId: string): Promise<MatchContext> {
   const { data } = await ctx.db
     .from('matches')
-    .select('id, status, sessions(id, period_id)')
+    .select('id, status, sessions(id, period_id, ended_at)')
     .eq('id', matchId)
     .eq('organization_id', organizationId)
     .maybeSingle()
 
   if (!data) throw notFound('Match not found')
-  const session = data.sessions as unknown as { id: string; period_id: string }
+  const session = data.sessions as unknown as { id: string; period_id: string; ended_at: string | null }
 
   return {
     id: data.id,
     session_id: session.id,
     period_id: session.period_id,
     status: data.status,
+    session_ended_at: session.ended_at,
   }
 }
 
@@ -92,8 +96,11 @@ export async function recordEvent(ctx: Ctx): Promise<Response> {
   const match = await loadMatch(ctx, body.match_id, member.organizationId)
   await assertPeriodOpen(ctx.db, match.period_id)
 
-  if (match.status === 'completed' || match.status === 'abandoned') {
-    throw badRequest('That match has already finished')
+  if (match.status === 'abandoned') {
+    throw badRequest('That match was abandoned')
+  }
+  if (!editWindowOpen(match.status, match.session_ended_at)) {
+    throw badRequest('The 5-hour window to edit this session has closed')
   }
 
   const side = await sideOf(ctx, body.match_id, body.player_id)
@@ -165,6 +172,7 @@ export async function recordEvent(ctx: Ctx): Promise<Response> {
     await refreshMatchScore(ctx.db, match.id)
   }
   await recomputeStats(ctx.db, match.period_id)
+  await touchSessionActivity(ctx.db, match.session_id)
   await broadcast(ctx.db, member.organizationId, match.period_id, 'event.recorded', {
     match_id: match.id,
     event_type: body.event_type,
@@ -274,8 +282,13 @@ export async function recordBatch(ctx: Ctx): Promise<Response> {
 
 /**
  * Undo. Sets voided_at rather than deleting, so the audit trail survives the
- * inevitable argument about whether that goal actually counted. An assisted
- * goal voids its assist too, via the shared group_id.
+ * inevitable argument about whether that goal actually counted.
+ *
+ * Cascade is one-directional: voiding a GOAL takes its assist with it (an
+ * assist can never outlive the goal it belongs to), but voiding just the
+ * assist leaves the goal standing as a solo goal — the goal doesn't depend
+ * on the assist. Any other event type (card, own goal) only ever voids
+ * itself; it has no paired row to cascade to.
  */
 export async function voidEvent(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)
@@ -283,7 +296,7 @@ export async function voidEvent(ctx: Ctx): Promise<Response> {
 
   const { data: event } = await ctx.db
     .from('match_events')
-    .select('id, match_id, period_id, metadata, event_type')
+    .select('id, match_id, session_id, period_id, metadata, event_type, matches(status, sessions(ended_at))')
     .eq('id', eventId)
     .eq('organization_id', member.organizationId)
     .maybeSingle()
@@ -291,10 +304,15 @@ export async function voidEvent(ctx: Ctx): Promise<Response> {
   if (!event) throw notFound('That event was not found')
   await assertPeriodOpen(ctx.db, event.period_id)
 
+  const match = event.matches as unknown as { status: string; sessions: { ended_at: string | null } }
+  if (!editWindowOpen(match.status, match.sessions?.ended_at ?? null)) {
+    throw badRequest('The 5-hour window to edit this session has closed')
+  }
+
   const groupId = (event.metadata as Record<string, unknown> | null)?.group_id as string | undefined
   const voidPatch = { voided_at: new Date().toISOString(), voided_by: member.user.id }
 
-  if (groupId) {
+  if (groupId && event.event_type === 'goal') {
     await ctx.db
       .from('match_events')
       .update(voidPatch)
@@ -307,11 +325,178 @@ export async function voidEvent(ctx: Ctx): Promise<Response> {
 
   await refreshMatchScore(ctx.db, event.match_id)
   await recomputeStats(ctx.db, event.period_id)
+  await touchSessionActivity(ctx.db, event.session_id)
   await broadcast(ctx.db, member.organizationId, event.period_id, 'event.voided', {
     match_id: event.match_id,
   })
 
   return successResponse({ id: eventId }, 'Undone')
+}
+
+/**
+ * Correct an already-recorded event: reassign who scored/assisted, or fix
+ * the minute. Only usable live or within the post-session edit window —
+ * same rule as recording and voiding. Every change is logged to
+ * match_event_edits (who, when, old value → new value), so a corrected
+ * record is visibly different from one nobody ever touched.
+ *
+ * An assist cannot exist on its own — it's always the credit for a specific
+ * goal. So editing a GOAL's `related_player_id` here is how you assign,
+ * change, or remove that goal's assist: it manages the paired `assist`
+ * match_events row (insert/update/void) directly, rather than the caller
+ * ever addressing the assist row itself.
+ */
+export async function updateEvent(ctx: Ctx): Promise<Response> {
+  const member = await requireMember(ctx.req, ctx.db)
+  const eventId = ctx.segments[0]
+  const body = await ctx.body<{ player_id?: string; related_player_id?: string | null; minute?: number | null }>()
+
+  validate(body as unknown as Record<string, unknown>, {
+    player_id: [str(36, 36)],
+    minute: [int(0, 200)],
+  })
+
+  const { data: event } = await ctx.db
+    .from('match_events')
+    .select('*, matches(id, status, sessions(ended_at))')
+    .eq('id', eventId)
+    .eq('organization_id', member.organizationId)
+    .maybeSingle()
+
+  if (!event) throw notFound('That event was not found')
+  if (event.voided_at) throw badRequest('That event was undone — nothing to correct')
+  await assertPeriodOpen(ctx.db, event.period_id)
+
+  const match = event.matches as unknown as { id: string; status: string; sessions: { ended_at: string | null } }
+  if (!editWindowOpen(match.status, match.sessions?.ended_at ?? null)) {
+    throw badRequest('The 5-hour window to edit this session has closed')
+  }
+
+  const now = new Date().toISOString()
+  const changes: Record<string, { from: unknown; to: unknown }> = {}
+  const patch: Record<string, unknown> = {}
+  const newScorerId = body.player_id ?? event.player_id
+
+  if (body.player_id !== undefined && body.player_id !== event.player_id) {
+    const side = await sideOf(ctx, event.match_id, body.player_id)
+    if (!side) throw badRequest('That player is not in this match')
+    changes.player_id = { from: event.player_id, to: body.player_id }
+    patch.player_id = body.player_id
+    patch.side = side
+  }
+
+  const groupId = (event.metadata as Record<string, unknown> | null)?.group_id as string | undefined
+
+  if (event.event_type === 'goal' && groupId) {
+    const { data: existingAssist } = await ctx.db
+      .from('match_events')
+      .select('id, player_id')
+      .eq('match_id', event.match_id)
+      .eq('event_type', 'assist')
+      .filter('metadata->>group_id', 'eq', groupId)
+      .is('voided_at', null)
+      .maybeSingle()
+
+    if (body.related_player_id !== undefined) {
+      const intendedAssisterId = body.related_player_id
+
+      if (intendedAssisterId !== event.related_player_id) {
+        changes.related_player_id = { from: event.related_player_id, to: intendedAssisterId }
+        patch.related_player_id = intendedAssisterId
+      }
+
+      if (!intendedAssisterId && existingAssist) {
+        // Clearing the assist — the goal stands alone from here.
+        await ctx.db
+          .from('match_events')
+          .update({ voided_at: now, voided_by: member.user.id })
+          .eq('id', existingAssist.id)
+      } else if (intendedAssisterId && !existingAssist) {
+        // This goal had no assist — assigning one for the first time.
+        const assisterSide = await sideOf(ctx, event.match_id, intendedAssisterId)
+        if (!assisterSide) throw badRequest('That player is not in this match')
+        await ctx.db.from('match_events').insert({
+          organization_id: member.organizationId,
+          match_id: event.match_id,
+          session_id: event.session_id,
+          period_id: event.period_id,
+          player_id: intendedAssisterId,
+          related_player_id: newScorerId,
+          event_type: 'assist',
+          side: assisterSide,
+          minute: body.minute ?? event.minute,
+          metadata: { group_id: groupId },
+          created_by: member.user.id,
+          created_at: now,
+          edited_at: now,
+          edited_by: member.user.id,
+        })
+      } else if (intendedAssisterId && existingAssist && intendedAssisterId !== existingAssist.player_id) {
+        // Reassigning credit for the existing assist to someone else.
+        const assisterSide = await sideOf(ctx, event.match_id, intendedAssisterId)
+        if (!assisterSide) throw badRequest('That player is not in this match')
+        await ctx.db
+          .from('match_events')
+          .update({
+            player_id: intendedAssisterId,
+            related_player_id: newScorerId,
+            side: assisterSide,
+            edited_at: now,
+            edited_by: member.user.id,
+          })
+          .eq('id', existingAssist.id)
+      } else if (existingAssist && newScorerId !== event.player_id) {
+        // Same assister, but the scorer changed — keep the assist's
+        // "assisted whom" pointer from going stale.
+        await ctx.db
+          .from('match_events')
+          .update({ related_player_id: newScorerId })
+          .eq('id', existingAssist.id)
+      }
+    } else if (existingAssist && newScorerId !== event.player_id) {
+      // Assist untouched, but the scorer changed underneath it.
+      await ctx.db
+        .from('match_events')
+        .update({ related_player_id: newScorerId })
+        .eq('id', existingAssist.id)
+    }
+  }
+
+  if (body.minute !== undefined && body.minute !== event.minute) {
+    changes.minute = { from: event.minute, to: body.minute }
+    patch.minute = body.minute
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return successResponse(event, 'Nothing to change')
+  }
+
+  const { data: updated, error } = await ctx.db
+    .from('match_events')
+    .update({ ...patch, edited_at: now, edited_by: member.user.id })
+    .eq('id', eventId)
+    .select('*')
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  if (Object.keys(changes).length > 0) {
+    await ctx.db.from('match_event_edits').insert({
+      organization_id: member.organizationId,
+      event_id: eventId,
+      edited_by: member.user.id,
+      edited_at: now,
+      changes,
+    })
+  }
+
+  if (event.event_type === 'goal' || event.event_type === 'own_goal') {
+    await refreshMatchScore(ctx.db, event.match_id)
+  }
+  await recomputeStats(ctx.db, event.period_id)
+  await touchSessionActivity(ctx.db, event.session_id)
+
+  return successResponse(updated, 'Corrected')
 }
 
 /** The timeline for a match, newest last. */
@@ -326,7 +511,7 @@ export async function listEvents(ctx: Ctx): Promise<Response> {
 
   let q = ctx.db
     .from('match_events')
-    .select('*, players!match_events_player_id_fkey(display_name, jersey_number, photo_url)')
+    .select('*, players!match_events_player_id_fkey(display_name, whatsapp_nickname, jersey_number, photo_url)')
     .eq('organization_id', member.organizationId)
     .is('voided_at', null)
 

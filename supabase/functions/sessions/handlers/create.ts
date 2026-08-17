@@ -45,6 +45,20 @@ export async function createSession(ctx: Ctx): Promise<Response> {
     slot = data
   }
 
+  // Best-effort expected end time, used for overtime tracking and the
+  // "gone quiet past its end time" scheduler check — 90 minutes when there's
+  // no slot to read a real duration from, same default the scheduler uses.
+  let durationMinutes = 90
+  if (slot) {
+    const { data: slotRow } = await ctx.db
+      .from('session_slots')
+      .select('duration_minutes')
+      .eq('id', slot.id)
+      .maybeSingle()
+    durationMinutes = slotRow?.duration_minutes ?? 90
+  }
+  const scheduledEndAt = new Date(kickoff.getTime() + durationMinutes * 60_000)
+
   const { data, error } = await ctx.db
     .from('sessions')
     .insert({
@@ -53,6 +67,7 @@ export async function createSession(ctx: Ctx): Promise<Response> {
       title: body.title ? String(body.title).trim() : (slot?.label ?? null),
       session_date: kickoff.toISOString().slice(0, 10),
       kickoff_at: kickoff.toISOString(),
+      scheduled_end_at: scheduledEndAt.toISOString(),
       venue: (body.venue as string) || slot?.venue || org?.venue || null,
       slot_id: slot?.id ?? null,
       status: 'scheduled',

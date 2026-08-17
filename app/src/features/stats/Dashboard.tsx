@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '@/services/client'
 import { useAuth } from '@/features/auth/AuthProvider'
 import {
-  Badge, Button, Card, EmptyState, ErrorState, PlayerAvatar,
+  Badge, Button, Card, EmptyState, ErrorState, PlayerAvatar, PlayerName,
   RankBadge, SectionTitle, Skeleton, StatTile,
 } from '@/components/ui'
 import { CountUp, FadeIn, Stagger, StaggerItem } from '@/components/motion'
@@ -135,9 +135,11 @@ export function Dashboard() {
                     size="sm"
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] text-chalk">
-                      {row.players?.display_name}
-                    </span>
+                    <PlayerName
+                      name={row.players?.display_name ?? ''}
+                      whatsappNickname={row.players?.whatsapp_nickname}
+                      className="block text-[15px] text-chalk"
+                    />
                     <span className="text-[12.5px] text-chalk-muted">
                       {row.goals}G · {row.assists}A · {row.appearances} apps
                     </span>
@@ -204,7 +206,7 @@ export function Dashboard() {
                         key={m.id}
                         className="numeric rounded-lg bg-pitch-800 px-2 py-1 text-[13px] text-chalk-muted"
                       >
-                        {m.side_a_score}–{m.side_b_score}
+                        {m.side_a_score} goals
                       </span>
                     ))}
                   </div>
@@ -249,9 +251,11 @@ function TopCard({
           photoUrl={stat.players?.photo_url}
           size="sm"
         />
-        <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">
-          {stat.players?.display_name}
-        </span>
+        <PlayerName
+          name={stat.players?.display_name ?? ''}
+          whatsappNickname={stat.players?.whatsapp_nickname}
+          className="flex-1 text-[15px] text-chalk"
+        />
         <span className="numeric text-2xl text-volt-400">{stat[field]}</span>
       </div>
     </Card>

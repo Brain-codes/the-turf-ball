@@ -162,7 +162,208 @@ The user personally clicked through the previous (session 2) onboarding and said
 7. **Staging project.** Everything is being built directly against production `dzrklwoenqexwfypmvxg`. No staging exists.
 8. **NEW — what belongs on onboarding's final step.** The user said explicitly they didn't know what should go there. Built: a review screen (next-session countdown, squad size, share link). Not confirmed with the user — flag it if it comes up.
 9. **NEW — rejecting a self-added player deletes the row rather than marking it `inactive`.** My call, reasoned through in the session 3 section above. Worth confirming this is the behaviour the user wants, especially if they'd rather keep a record of who was rejected and why.
+11. **NEW, BACKLOG — configurable "live session" behaviour.** When deciding to make a session one continuous match (session 6, 17 Aug), the user explicitly said finer-grained settings around this ("live settings to decide a lot of things") should come later, not now. Nothing scoped yet — raise it next time live-session behaviour comes up rather than assuming the current unconditional "always one match per session" is final.
+
 10. **KNOWN, EXPLICITLY DEFERRED — a session-machinery issue the user mentioned but hasn't described yet** ("there's something I saw an issue concerning the session issue but we'll come back to that"). Not investigated as part of this rebuild, on purpose — stayed scoped to onboarding/players/schedule. Raise it next time the user is ready to look at it; nothing in this session touched `materialize_and_flag_sessions()` or related session-lifecycle code.
+
+---
+
+## Session 4 (17 Aug 2026) — live match-day "Add player" fixes
+
+The user personally tested the live match-day view (`/app/sessions/:id/live`) and reported two bugs:
+
+1. In the "Someone just arrived" sheet, tapping a squad member in the search results appeared to do nothing.
+2. Adding a brand-new name via "Not in the squad list yet" gave no visible confirmation the player was actually added, and there was no way to see the current player list from the live view to check.
+
+**Root cause for both:** `addLatecomer()` in `app/src/features/matchday/MatchDay.tsx` had a `try { ... } finally { ...close the sheet... }` with no `catch` — any failure (network, validation, a rejected write) closed the sheet silently with no error shown, indistinguishable from "nothing happened." On success it also just closed the sheet with no confirmation, so even a working add looked like a no-op unless you separately went looking for the new player.
+
+**Fixed, not yet clicked through by the user (their choice — they're testing this round themselves):**
+- `addLatecomer()` now has a real `catch`: shows the actual error message inline in the sheet (`addingLateError` state) instead of swallowing it. `createAndAddLatecomer()` does the same.
+- On success, shows a brief "`<name>` added to the pitch" confirmation banner at the top of the live screen (`addedFeedback` state, auto-clears after 2.5s).
+- New **Squad** button next to "+ Add player" in the live view's top bar, opening a full-screen bottom sheet listing everyone: "On the pitch" (current roster, sorted alphabetically) and "Not present" (everyone else in the org not yet on this match's roster), each with a one-tap "+ Add" that calls the same `addLatecomer()` path. A "+ Add player not in squad" button at the bottom routes into the existing add-new-player sheet.
+- `allOrgPlayers` query's `enabled` condition widened from `addingLate` to `addingLate || viewingSquad` so the Squad sheet has data to show without needing the other sheet open first.
+
+**Verified:** `npx tsc -b --noEmit` clean. **NOT verified:** not exercised in a browser — the user asked to test this themselves this round rather than have it driven for them.
+
+**Follow-up, found by the user's own testing:** the "tap does nothing" bug had a second, more direct cause — `addLatecomer()` was calling `api.post('matches/:id/roster', ...)` but `supabase/functions/matches/index.ts` only registers `:id/roster` under **PATCH**, so every add-latecomer call was hitting a real `404 Endpoint not found` (confirmed by the user via their browser's network tab). The error-handling fix above is what made this 404 visible instead of silently swallowed — that part of the diagnosis held up. Fixed by changing the frontend call to `api.patch(...)` (`app/src/features/matchday/MatchDay.tsx:654`) to match the existing backend route rather than adding a POST route — PATCH is the more correct verb for "replace the roster" anyway, and it was the only call site. `tsc -b --noEmit` clean. **Still not verified in a browser** — this exact call path (add-latecomer → roster PATCH) has not been re-tested end-to-end since the fix; worth confirming first thing next test pass.
+
+---
+
+## Session 5 (17 Aug 2026) — appearances per session, and dropping the red/blue team framing
+
+Two more things the user raised from using the app, not asked to be tested live by me this round either — fixed and deployed, verification below is honest about what actually ran.
+
+### 1. An appearance is now once per SESSION, not once per match
+
+**The bug:** `recompute_period_stats()` (the single SQL function that computes every stat) counted `count(distinct mp.match_id)` for appearances. If a session went to full time and a new match was started afterward (same day, same players — e.g. re-starting after a break), that created a second `matches` row with its own `match_players` roster, so a player who never left the pitch got 2 appearances for one day.
+
+**The fix:** new migration `supabase/migrations/20260817120000_appearance_per_session.sql` — a `create or replace function public.recompute_period_stats` that is byte-for-byte identical to the original in `20260816121000_engine.sql` except the `apps` CTE now does `count(distinct mt.session_id)` instead of `count(distinct mp.match_id)`. Nothing else about scoring changed — goals/assists/cards/punctuality/votes are all still read straight from `match_events`/`session_attendance`, independent of this.
+
+**Verified:** applied via `supabase db push` (confirmed present in `supabase migration list`). The user ran `supabase db query --linked "select public.recompute_period_stats(id) from periods where status='open'"` directly — all 3 open periods recomputed with no error (6, 14, 17 player rows updated respectively). **Still not spot-checked:** nobody has confirmed a player who was in two matches within one session now shows `appearances = 1` instead of 2 — the function runs clean, but that specific before/after hasn't been eyeballed against real data yet.
+
+### 2. Dropped the "red team / blue team" framing
+
+**What it was:** the product has no team-vs-team play — everyone present goes on `side_a`, `side_b` stays empty (this was already true, per an existing code comment in `MatchDay.tsx`) — but the schema's two-sides shape (`match_side` enum, `side_a`/`side_b` columns) was still surfacing as literal "Blue"/"Red" text: `matches/handlers/create.ts` defaulted `side_a_label`/`side_b_label` to `'Blue'`/`'Red'`, shown as "Blue v Red" in the session detail screen and "Full time: Blue 3 - 2 Red" in the finish-match toast.
+
+**What changed (schema untouched — this was a naming/display fix, not a data-model rewrite):**
+- `matches/handlers/create.ts`: default labels changed from `'Blue'`/`'Red'` to `'Squad'`/`'Opposition'` — no longer color-coded, and `side_b` reads honestly as "own goals against" (own-goal events are the only thing that ever lands on `side_b_score` — see `refresh_match_score` in `engine.sql`) rather than an actual second team.
+- `matches/handlers/lifecycle.ts` (`finishMatch`): toast changed from `"Full time: Blue 3 - 2 Red"` to `"Full time: 3 scored"`, or `"Full time: 3 scored, 1 own goal"` only when there were any.
+- `app/src/features/sessions/screens.tsx`: session detail's match list no longer shows `"{label} v {label}"` — just `"Match #N"` and the goals-scored count, with an own-goals note only when non-zero.
+- `app/src/features/stats/Dashboard.tsx` and `app/src/features/public/PublicPage.tsx`: the small score chips per match changed from `"3–1"` (reads as a scoreline between two teams) to `"3 goals"`.
+- Deliberately **left alone**: the `match_side` enum, `match_players.side` (not-null), `match_events.side`, and the `side_a`/`side_b` request shape in `createMatch`/`updateRoster`/`events/handlers/record.ts`. Removing those would touch the clean-sheet-by-side logic in `finishMatch` and the own-goal scoring in `refresh_match_score`, both of which still work correctly as-is (own goals need *some* side to land on, and the whole "goals against" chip depends on it) — reframing the labels was enough to make the two-team language disappear from everything the user actually sees.
+
+**Verified:** `npx tsc -b --noEmit` and `deno check --quiet */index.ts` both clean. `matches` function redeployed (`supabase functions deploy matches`). **NOT verified:** not clicked through in a browser — a new match hasn't been created/finished since this deploy to confirm the new toast wording and the session-detail card render correctly.
+
+---
+
+## Session 6 (17 Aug 2026) — a session is now one continuous match, not several
+
+Follow-on from the appearance fix above. The user pointed out that even with appearances now counted once per session, the *live view itself* still reset to zero every time you hit "full time" and started again — the clock, the running goal/card totals, all of it — because each restart created a brand-new `matches` row with its own event list. Asked directly: "bring everything under one activity." Given the explicit choice between (a) keep multiple match rows but sum their totals for display, or (b) never create a second match row at all, the user picked **(b)** — no match-splitting, one continuous match per session — and asked to put finer-grained "live settings" flexibility in the backlog rather than build it now.
+
+**What changed:**
+- New `POST matches/:id/resume` (`supabase/functions/matches/handlers/lifecycle.ts`, `resumeMatch`): sets the match back to `status: 'live'`, clears `ended_at`, and deletes any `clean_sheet` events that were awarded at the earlier finish (they were only ever provisional against that moment's score — same reasoning `finishMatch` already uses when called twice). Registered in `matches/index.ts` under `POST ':id/resume'`.
+- `app/src/features/matchday/MatchDay.tsx`: the branch that used to appear after a match finished — an `AttendanceStep` that silently created a second `matches` row via `POST matches` + `POST matches/:id/start` — is replaced by a new `MatchPausedStep` component. It's a simple two-button screen: **Resume** (calls the new `POST matches/:id/resume` on the *same* match, then re-renders `LiveMatch` for it) or **End session** (unchanged — closes the day out for good). Because `LiveMatch` is keyed by `match.id` and that id no longer changes across a pause/resume, the clock (`elapsed`, computed from `match.started_at`) and the `match-events` query both continue exactly where they left off — nothing to reset.
+- The very first "who's here?" attendance step (session still `status: 'scheduled'`) is untouched — it still creates the session's one and only match, same as before. `AttendanceStep`'s old "offer to start match N+1" role is gone; a defensive fallback keeps the old create-a-match code path only for the edge case of a live session with literally zero matches (shouldn't happen going forward, kept for old data).
+- **Deliberately not touched, per the user's own request to backlog it:** any settings UI for choosing *whether* a session should split into multiple matches, half-time handling, or anything configurable about this. Right now it's unconditionally "one match per session" for every organization.
+
+**Data model note:** `matches`/`match_players`/`match_events` schema is untouched — a session *can* still technically end up with more than one `matches` row (e.g. any left over from before this change), and `activeMatch` / `MatchPausedStep` always operate on `session.matches[session.matches.length - 1]` (the most recent one), so old multi-match sessions won't break, they just won't gain more matches going forward.
+
+**Verified:** `npx tsc -b --noEmit` and `deno check --quiet */index.ts` both clean. `matches` function redeployed. **NOT verified:** not clicked through in a browser — nobody has actually finished a match, hit Resume, and confirmed the clock/goal totals kept counting instead of resetting.
+
+**Data fix for the two sessions that already existed in this split state:** the user had two live sessions from earlier testing (`74a84787-b290-458f-b108-3fb9368742c4` and `ebdab7ba-555e-4f8e-af3f-076e265df018`), each already split into 3 matches (2 completed, 1 live) from before this session's fix. Ran a one-off `DO $$ ... $$` block directly against production (not a migration file — data cleanup, not a schema change) that, per session: picked the earliest match (by `sequence`) as the survivor, reassigned every `match_events` row from the other two matches onto it, copied over any `match_players` roster rows not already present (`on conflict do nothing`), deleted the now-empty duplicate `matches` rows, deleted stale `clean_sheet` events, set the survivor back to `status: 'live'`/`ended_at: null`, called `refresh_match_score()` and `recompute_period_stats()`. **Verified for real, not just "ran without error":** confirmed afterward that both sessions now have exactly 1 match each (was 3), with all 11 goals from the day combined onto it, and every player who appeared now shows `appearances = 1` with their full day's goal count — checked directly via `supabase db query --linked`. No other sessions in the database were in this split state, so no further cleanup needed.
+
+---
+
+## Session 7 (17 Aug 2026) — WhatsApp nickname shown next to every player name
+
+The user pointed out that a lot of people at the pitch know each other by their WhatsApp name, not whatever's on the roster (`display_name`) — so wherever the app shows a player's name, it should also show their WhatsApp nickname, small and faint, as an identification hint rather than a second name competing for attention.
+
+**The `whatsapp_nickname` column already existed** (migration `20260816180000_whatsapp_nickname.sql`, from an earlier round) and every add/edit player form already captured it — it just wasn't shown anywhere. This round wired it through to display.
+
+**New shared component:** `PlayerName` in `app/src/components/ui/index.tsx`, right next to `PlayerAvatar`. Renders the display name, and — only if a WhatsApp nickname exists and differs from the display name (skips the redundant case where someone set both to the same thing) — a small `(nickname)` in `text-[11px]` at `chalk-faint/70` opacity, deliberately unobtrusive.
+
+**Backend:** every handler that joins a `players` row for display now selects `whatsapp_nickname` alongside `display_name` — `periods`, `matches` (both `get` selects), `sessions` (`get` and `attendance`), `stats` (`dashboard` and `leaderboard`), `awards`, `events` (the created-event echo), and `public` (`publicPage.ts`'s `projectPlayer()` plus its raw selects). The public share page **does** expose it — deliberate, not an oversight: that page's whole audience is the same WhatsApp group the nickname refers to, so it's exactly the right context, not a leak. `players` list/get endpoints already selected `*`, so they had it all along.
+
+**Frontend:** `PlayerName` (or, in the handful of places using a big centered `<h1>` header where inline didn't fit the layout — player detail pages, hero/winner cards — a small line placed directly underneath instead) was applied everywhere a player's name renders: the squad list and player detail page, match-day's attendance list/roster grid/goal-scorer grid/stat board/activity feed/squad sheet/add-player sheet, the session detail attendance list, the internal leaderboard and dashboard, the awards screen (provisional leader, other awards, past winners, close-period preview), and the entire public share page (hero card, leaderboard, awards, top-performer cards, individual player page). Every nested TypeScript type that carries a player join (`MatchEvent.players`, `PublicPlayerRef`) got the field added so this typechecks end to end.
+
+**Verified:** `npx tsc -b --noEmit` and `deno check --quiet */index.ts` both clean. Confirmed real data exists and behaves correctly — queried the live database directly and found real players with `whatsapp_nickname` set (e.g. "Mazz" → "Ashxr"), including one player where it exactly matches `display_name` (correctly won't render, avoiding the redundant case). `periods`, `matches`, `sessions`, `public`, `awards`, `stats`, `events` functions all redeployed. **NOT verified:** not clicked through in a browser — nobody has looked at any of these screens since the deploy to confirm the nickname actually renders in the right place, at the right size, without breaking any layout (especially the tight goal-scorer grid in match-day, where a second line of text was added under each player's name).
+
+---
+
+## Session 8 (17 Aug 2026) — post-session editing, no more force-closed live sessions, punctuality from real kick-off, session timeline
+
+Four related asks about the live-session flow, given in one message and explicitly built in the order requested (asked directly, not my call — see the question I put to the user before starting). All four ship in migration `20260817130000_edit_window_and_session_timing.sql`, deployed and confirmed present in the live schema (`actual_kickoff_at`, `ended_at`, `scheduled_end_at`, `last_activity_at`, `last_viewed_at`, `awaiting_confirmation` on `sessions`; `edited_at`/`edited_by` on `match_events`; new `match_event_edits` table). `sessions` and `events` functions redeployed.
+
+### 1. Post-session edit window (5 hours) with an audit trail
+
+New shared rule in `_shared/helpers.ts`: `editWindowOpen(matchStatus, sessionEndedAt)` — true while a match is still `live`/`pending` (normal in-play recording, unrestricted, unchanged), OR the match's session ended ≤ `EDIT_WINDOW_HOURS` (5) ago. False otherwise — the session is locked for good.
+
+- `events/handlers/record.ts`: `recordEvent` no longer hard-blocks writes to a `completed` match — it now checks `editWindowOpen()` instead (still blocks `abandoned` matches outright). This is what lets "I forgot to record a goal" get fixed after full time, not just during play.
+- `voidEvent` (undo/delete) gained the same check — previously unrestricted beyond the period being open; now also locked out past the 5-hour window.
+- New `PATCH events/:id` (`updateEvent`, new handler + route): corrects an existing event's scorer (`player_id`), assister (`related_player_id`), or minute. Every change writes a row to the new `match_event_edits` table (`event_id`, `edited_by`, `edited_at`, `changes` as `{field: {from, to}}` jsonb) — a real audit trail, separate from voiding's existing `voided_at`/`voided_by`. The event row itself also gets `edited_at`/`edited_by` stamped, so a corrected record is visibly different at a glance from one nobody touched (`(edited)` tag in the UI, `created_at` vs `edited_at` tells the "was this the real live record or a later correction" story the user asked for — deliberately not framed as fraud detection, just transparency).
+- Frontend: `app/src/features/sessions/screens.tsx` gained `EditEventsPanel`, shown on a completed session's detail page whenever the window is still open (client-side mirrors the same 5-hour math for the UI gate; the backend is the actual enforcement). Lists every goal/assist/card, lets you reassign who it belongs to (dropdown) or remove it (voids it), and has a "+ Add something missed" form for a forgotten goal/assist/card. When the window's closed, it just says when it closed instead of showing the panel.
+
+### 2. A live session with real activity no longer gets silently force-closed — and never actually was, but now proactively checks in
+
+Re-reading `materialize_and_flag_sessions()` (the existing 15-minute cron): it already only auto-closed genuinely empty "ghost" sessions (zero attendance, zero matches) — a session with real play was never being force-closed automatically. What was missing, which the user asked for: proactively noticing a session that's gone quiet — activity stopped, past its scheduled end — and checking in rather than leaving it live forever or guessing.
+
+New step 4 in the same cron function:
+- A `live` session past `scheduled_end_at` with no activity (`last_activity_at`, bumped by every event write and attendance change via new `touchSessionActivity()` helper) in the last 15 minutes gets evaluated.
+- If `last_viewed_at` (a heartbeat — `sessions/handlers/get.ts` now stamps this on every `GET` while the session is `live`, and the live view already polls every 30s) is fresher than 3 minutes — someone's plausibly still on the live screen — sets `awaiting_confirmation = true` instead of touching status. The live view (`MatchDay.tsx`) shows a new `StillGoingPrompt` banner: "Still going?" / "End session". Tapping "Still going" calls new `POST sessions/:id/keep-alive`, which clears the flag and resets the activity clock.
+- If nobody's watching (`last_viewed_at` stale or null), it closes the session and any still-open matches for real (`status: 'completed'`, `ended_at: now()`).
+
+### 3. Punctuality judged against the real kick-off, not the scheduled one
+
+`sessions/handlers/attendance.ts`'s `setAttendance` now bands arrival against `session.actual_kickoff_at ?? session.kickoff_at` instead of always `session.kickoff_at`. `startSession` now records `actual_kickoff_at` (once — idempotent, so resuming after full time never overwrites the real kick-off moment), and if this is the session's first real start, **recomputes punctuality for everyone already marked present** (they tapped in during the "who's here?" screen, before `actual_kickoff_at` existed, so their bands were computed against the wrong — scheduled — reference the first time). This is what makes "anyone present when the session actually starts is early, not late" true even when the group itself got going 30 minutes behind schedule. The existing `early_before_mins`/`on_time_after_mins`/`late_after_mins`/`very_late_points` settings (Settings → Football, already built) are unchanged and already exactly the "configurable how many minutes counts as late" the user asked for — no new setting needed.
+
+### 4. Session detail shows the real timeline
+
+`sessions/handlers/create.ts` now computes and stores `scheduled_end_at` (kickoff + slot duration, or 90 min default) at creation time — needed by both the new cron step and this display. `SessionDetailScreen` gained a "Timeline" card: scheduled vs. actual kick-off (with the delay, "15m late"/"10m early"), when it ended (with overtime if it ran past `scheduled_end_at`), and total time played.
+
+**Verified:** `npx tsc -b --noEmit` and `deno check --quiet */index.ts` both clean. Migration applied and confirmed present via direct schema query. `select public.materialize_and_flag_sessions()` invoked directly against production — ran with no error (the project's own hard-won lesson: always run a new/changed function once against live data, not just trust that `db push` succeeded). `sessions` and `events` functions redeployed. **NOT verified:** none of the four behaviors has been exercised end-to-end by a human yet — no session has gone quiet to trigger the still-going prompt, no post-session correction has been made through the new panel, no punctuality band has been checked against a real late kickoff, and the timeline card hasn't been looked at on a real completed session. This is the biggest unverified surface shipped in one round so far — worth working through deliberately rather than assuming it all holds up.
+
+---
+
+## Session 9 (17 Aug 2026) — public, view-only live tracking
+
+While the user was still testing the above, they asked for a second thing in parallel: from the public share page (no login), a pulsating "LIVE" banner should appear whenever a session is in progress, linking to a view-only tracker — real-time-feeling stats and activity, no interaction, guests can look at player detail pages but can't do anything.
+
+**Discovered along the way:** a public session endpoint (`GET public/:slug/session/:sessionId`) already existed in `publicPage.ts`/`public/index.ts`, fully built — but had zero frontend consumer anywhere in the router or `PublicPage.tsx`. Dead code from an earlier round. This request is what finally wired it up, rather than building a new endpoint from scratch.
+
+**Backend (`public` function, redeployed):**
+- `getPublicPage` (the main `/t/:slug` payload) now also looks up the org's current `status = 'live'` session (respecting the existing `show_sessions` page setting — off means no live banner either) and returns it as `live_session: {id, title, session_date} | null`.
+- `getPublicSession` (the existing dead endpoint) extended: now includes cards (`yellow_card`/`red_card`) in the event feed when the page's `show_cards` setting allows it (previously only pulled goals/assists), plus `match.started_at` and `session.actual_kickoff_at`/`kickoff_at` for a real timeline. Still strictly read-only — no write path was added, consistent with the rest of `public`.
+- Both confirmed working with a live curl against production (anon key only, no session token): the main page payload correctly returned the real live session (`ebdab7ba-555e-4f8e-af3f-076e265df018`, from the session-6 merge earlier today), and the session endpoint returned its full event feed with player names.
+
+**Frontend:**
+- `PublicPage.tsx`: pulsating LIVE banner (red dot with an `animate-ping` ring, matching the pattern already used for "Live" badges elsewhere) shown on the main public page whenever `live_session` is present, linking to `/t/:slug/live/:sessionId`.
+- New `PublicLiveSessionScreen` (same file, alongside the existing `PublicPlayerScreen`): shows the live/ended badge, running goal total (and own goals if any), and a reverse-chronological activity feed — each entry's player name links through to the existing `/t/:slug/player/:id` page ("view player details," exactly as asked), nothing else is interactive. Polls every 8 seconds while mounted — fast enough to feel live for a guest without hammering the function if several people have it open. New route `/t/:slug/live/:sessionId` added to `router.tsx`.
+- No realtime channel/websocket used — kept to polling, consistent with how the rest of the public page already works (60s poll) and with rule2.txt's "no client subscribes to table changes" rule; broadcast events are for authenticated in-app listeners, not unauthenticated public ones.
+
+**Verified:** `npx tsc -b --noEmit` and `deno check --quiet */index.ts` both clean. `public` function redeployed. Both endpoints curled directly against production with just the anon key (no auth token) and returned correct real data, including the live session the earlier merge produced. **NOT verified:** not opened in an actual browser — nobody has seen the pulsating banner render, tapped through to the live tracker, or watched it auto-refresh with a real goal being scored during the 8-second poll window.
+
+**Follow-up in the same session — full stat parity + clock + animation, no backend change needed.** The user asked the guest tracker match the organizer's own live stat board (goals/assists/own goals/yellow/red, top scorer, top assister), show a running match clock, add a "this is happening now" animation, and make sure the WhatsApp nickname shows there too. The backend from the first pass already returned everything needed (`match.started_at`, and events already carried `own_goal`/`yellow_card`/`red_card`/`whatsapp_nickname` when the page's `show_cards` setting allows it) — this was purely a frontend rebuild of `PublicLiveSessionScreen` in `PublicPage.tsx`:
+- Per-player stat rows computed client-side from the event feed (same shape as `LiveMatch`'s `statRows` in `MatchDay.tsx`: goals, assists, own goals, yellow/red counts), sorted by goals×2+assists, with top-scorer/top-assister cards above it.
+- A real match clock (`useLiveClock` hook) ticking off `matches[last].started_at`, same MM:SS shape as the organizer's own clock, only while the session is live.
+- `LivePitchAnimation` — a small decorative strip with a ball drifting and spinning across a pitch-lined bar via a CSS `@keyframes` animation, shown only while live. Purely ambient, not functional.
+- `PlayerName` (the WhatsApp-nickname component from an earlier round) now used in the stat rows, top-performer cards, and the activity feed on this screen — it was previously using raw `display_name` here, so the nickname wasn't actually showing yet on this one screen even though the backend already sent it.
+
+**Verified:** `npx tsc -b --noEmit` clean, and `npm run build` (full production build, not just typecheck) succeeds. No backend redeploy needed — this round touched only `app/src/features/public/PublicPage.tsx`. **NOT verified:** still not opened in a browser — the animation, clock, and new stat sections have not been visually confirmed to render correctly or look right on a phone screen.
+
+**Follow-up — the animation wasn't what was meant.** The user pointed at a real lineup-graphic screenshot (two teams in formation, portrait pitch) and clarified: they wanted a ball actually bouncing between player positions in multiple directions with a 3D feel, not the flat drifting-dot strip from the first pass. Rebuilt `LivePitchAnimation` from scratch:
+- A full portrait pitch (markings: center circle, halfway line, both penalty boxes, both goal lines) tilted with `perspective(700px) rotateX(22deg)` for a broadcast-camera angle.
+- Two banks of 11 dots each (roughly GK/back-4/mid-3/front-3, mirrored top and bottom) standing in for two teams — chalk-white and volt-green to read clearly against the pitch green, purely decorative, not tied to real rosters.
+- The ball travels a 12-point zigzag waypoint path across both halves (`live-ball-pos` keyframes) — left, right, forward, back — paired with a second keyframe (`live-ball-scale`) that grows the ball 1.7× at the midpoint of each pass and back to 1× at each "touch," plus a synced shadow dot (`live-ball-shadow` / `live-shadow-scale`) that squashes and fades opposite the ball's scale — the combination is what fakes the up-and-down bounce in a 2D scene. 7-second loop, `prefers-reduced-motion` respected (freezes the ball instead of animating).
+- Verified visually in the Browser pane (not just typechecked) at mobile width against the real live session — pitch, tilt, both team's dots, and the ball mid-bounce all rendered as intended; confirmed the stat board/top-scorer/top-assist cards below it also render correctly with real data and WhatsApp nicknames.
+
+**Verified:** `npx tsc -b --noEmit` clean, and this specific screen was opened and screenshotted in the Browser pane against real production data (unlike the rest of this session's work, which stayed unverified in-browser at the user's request) — the animation and layout look right at mobile width. **NOT verified:** desktop/tablet widths, and the animation hasn't been watched through a full 7-second loop to confirm every waypoint transition looks smooth (only sampled at a few points).
+
+**Follow-up — collapsible, and everything randomized instead of a fixed loop.** The user asked for three more things: a hide/show toggle, ball speed that varies (not a constant pace) but staying "not too fast, not too slow," and the ball hopping between all 22 dots (11+11) in a genuinely random order rather than the fixed 12-point zigzag — plus the formation itself mixing/changing rather than being the same fixed lineup shape every time.
+
+The fixed-keyframe approach from the previous pass couldn't do any of this (CSS `@keyframes` are static, can't re-roll per cycle), so `LivePitchAnimation` was rebuilt around actual randomness:
+- `randomFormation()`: a wider pool of candidate pitch coordinates (with a little jitter so nothing looks grid-snapped) is shuffled, 22 are picked, and team membership (11 chalk-white, 11 volt-green) is independently shuffled onto them — mounts differently every time, dots from both "teams" interleaved across the whole pitch rather than banked top/bottom.
+- `useBouncingBall()`: a small timer loop (not CSS animation) that, each hop, picks a random different dot out of all 22 as the next target and a random duration between 0.9s–2.3s (the "not too fast, not too slow" bound), eases position between them, and separately eases a scale value that peaks mid-hop (`sin(t·π)`) to fake the bounce height — paired with a shadow dot whose scale/opacity move inversely. Every hop re-rolls both the target and the speed, so no two hops look alike and it never repeats a visible pattern. Respects `prefers-reduced-motion` (freezes instead of animating).
+- Collapse toggle: a small "Hide pitch"/"Show pitch" button above it — collapsing removes the pitch from the DOM entirely (the timer loop pauses rather than ticking in the background while hidden).
+
+**Verified:** `npx tsc -b --noEmit` clean. Opened in the Browser pane again (mobile width, real live session): confirmed the formation now visibly mixes both colors across the whole pitch instead of two clean banks, the collapse button is positioned and labelled correctly, and toggling it (via a script-driven click — the pane's synthetic click was flaky this round, but the underlying state change and DOM update were confirmed directly) correctly hides/shows the pitch with no console errors. **NOT verified:** hasn't been watched over a long stretch to eyeball that hop speed and target selection actually feel random rather than falling into some accidental short cycle.
+
+**Follow-up — formation changes now drift instead of popping.** Formation was only ever set once (on mount) before this, so "switching formation" didn't actually exist yet as a runtime behavior — the user asked for it, and for the transition itself to look like players walking there, not a sudden jump or disappearance. Added:
+- Every 13–20 seconds (randomized so it doesn't feel metronomic), `LivePitchAnimation` re-rolls the 22 dots' coordinates via a new `reformation()` — same 22 dot identities, same team/color per dot, only the x/y changes — and each dot's `<span>` now has a `transition-[left,top] duration-[2200ms] ease-in-out` so React's re-render animates smoothly from the old spot to the new one instead of snapping.
+- `useBouncingBall` was refactored to read positions through a ref (`pointsRef`) updated by a separate effect, rather than depending on the `points` array directly — otherwise every formation change would have restarted the hop loop from a random hop mid-flight, snapping the ball. Now the ball keeps its current hop smoothly and simply starts targeting the new formation's coordinates on its next hop.
+- Respects `prefers-reduced-motion` and pauses (no scheduled reformation) while the pitch is collapsed.
+
+**Verified:** `npx tsc -b --noEmit` clean, `npm run build` succeeds. **NOT verified in a browser this round — the user asked not to use the preview tool this time and will check it themselves.**
+
+---
+
+## Session 10 (17 Aug 2026) — session detail page rebuilt: hierarchy, collapsibility, and a real goal/assist data model
+
+The user tested the completed-session page (from session 8's post-session edit window work) and said the UI wasn't acceptable: wrong section order (a long "who turned up" list sitting above the short, more-useful Timeline/Matches/corrections sections, forcing a scroll past hundreds of names to reach anything else), no collapsing anywhere, the correction UI itself ("trash," their word) using inline dropdowns on cramped cards instead of a proper modal, and — the actual domain bug — assist treated as a freestanding event type you could add/edit on its own, when in football an assist can never exist without the goal it credits.
+
+### 1. Section order flipped
+
+`SessionDetailScreen` (`app/src/features/sessions/screens.tsx`) now renders **Matches → Timeline → Correcting the record → Who turned up**. The short, glanceable sections come first; the potentially-very-long attendance list is last, so a 500-person "who turned up" list can never push the things you're more likely to be here for below the fold.
+
+### 2. Collapsible everywhere a list can get long
+
+- New `AttendanceList` component: shows the first 5 present players, with "View all N (X more)" / "Show fewer" toggling the rest. Applies regardless of squad size.
+- The correcting-the-record list (goals/cards/own-goals) got the same treatment: first 5 rows, "View all" to expand.
+
+### 3. Correcting the record — goal-centric data model, not "assist is just another event type"
+
+This was the real fix, not just cosmetic. Football domain rule the user stated explicitly: **an assist always belongs to a specific goal; it can never exist standalone.** A goal, on the other hand, can absolutely stand alone (a solo goal) — same for own goals, yellow cards, red cards.
+
+**Backend (`supabase/functions/events/handlers/record.ts`, redeployed):**
+- `updateEvent` (`PATCH events/:id`) rewritten: when the target event is a `goal`, patching its `related_player_id` is now how you manage that goal's assist — not a separate call against the assist row. Passing a player id with no existing assist **inserts** a new linked `assist` match_events row (sharing the goal's `group_id`); passing `null` when one exists **voids** it; passing a different id **reassigns** it; leaving it untouched while changing the scorer keeps the assist's "assisted whom" pointer in sync automatically. The caller (frontend) never addresses an assist row directly — it only ever edits the goal.
+- `voidEvent` cascade direction fixed: it used to void an event's entire `group_id` sibling set symmetrically (documented in the original comment as "an assisted goal voids its assist too"), which meant voiding *just the assist* incorrectly took the goal down with it. Now cascade only fires when the voided event **is** the goal — voiding a goal takes its assist with it (correct), voiding just the assist leaves the goal standing as a solo goal (correct, and wasn't true before).
+
+**Frontend, complete rebuild of `EditEventsPanel` and everything under it:**
+- Events are grouped into "plays" client-side: every `goal` event is paired with its `assist` sibling (matched by shared `group_id` in `metadata`) into a single row — "Efe — Assist: Reward" or "Efe — No assist," not two separate list items.
+- Tapping a goal row opens `EditGoalSheet` (a proper modal via the existing `Sheet` component, not an inline card) — one Select for who scored, one Select for the assist ("No assist — solo goal" is a real option), Save, and "Remove this goal (and its assist)". This is the whole "select a goal, then either update the scorer, add an assist it didn't have, change the assist it did have, or remove the assist" flow the user described, mapped directly onto one screen.
+- Own goals/cards get their own lightweight `EditSimpleEventSheet` modal (single player field, no assist concept).
+- "+ Add something missed" is now `AddEventSheet`, a modal — type selector **without** "Assist" as a choice (`ADDABLE_TYPES = ['goal', 'own_goal', 'yellow_card', 'red_card']`, deliberately excludes it), and when adding a Goal, an inline optional assist field right there in the same modal — because a new goal's assist is decided at the moment you record the goal, not as a separate standalone action.
+
+**Verified:** `npx tsc -b --noEmit` clean, `npm run build` succeeds, `deno check --quiet */index.ts` clean, `events` function redeployed. **NOT verified in a browser — the user asked not to use the preview tool this round and will check it themselves.** This is a meaningful behavior change to the edit/void endpoints on top of being a UI rebuild, so it's worth exercising all three paths deliberately: adding a goal with an assist from the modal, editing an existing goal to add/change/remove its assist, and voiding a goal vs. voiding just its assist — to confirm the cascade direction is right in practice, not just in the code.
 
 ---
 

@@ -3,7 +3,7 @@
 import { createRouter } from '../_shared/router.ts'
 import { createMatch } from './handlers/create.ts'
 import { getMatch } from './handlers/get.ts'
-import { startMatch, finishMatch, updateRoster } from './handlers/lifecycle.ts'
+import { startMatch, finishMatch, resumeMatch, updateRoster } from './handlers/lifecycle.ts'
 
 Deno.serve(createRouter('matches', {
   GET: {
@@ -13,6 +13,7 @@ Deno.serve(createRouter('matches', {
     '': createMatch,
     ':id/start': startMatch,
     ':id/finish': finishMatch,
+    ':id/resume': resumeMatch,
   },
   PATCH: {
     ':id/roster': updateRoster,

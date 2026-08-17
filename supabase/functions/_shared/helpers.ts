@@ -127,6 +127,39 @@ export async function refreshMatchScore(db: SupabaseClient, matchId: string): Pr
   if (error) throw new Error(error.message)
 }
 
+/**
+ * How long after a session ends its recorded events can still be corrected
+ * (missing assist, wrong scorer, a card that shouldn't have been given).
+ * After this, the session is locked — whatever's recorded stands.
+ */
+export const EDIT_WINDOW_HOURS = 5
+
+/**
+ * True while a match's events can still be written to: either it's still
+ * genuinely in progress, or its session ended recently enough to be inside
+ * the post-session correction window.
+ */
+export function editWindowOpen(matchStatus: string, sessionEndedAt: string | null): boolean {
+  if (matchStatus === 'live' || matchStatus === 'pending') return true
+  if (!sessionEndedAt) return false
+  const hoursSince = (Date.now() - new Date(sessionEndedAt).getTime()) / 3_600_000
+  return hoursSince <= EDIT_WINDOW_HOURS
+}
+
+/**
+ * Marks a session as genuinely still active — called on every event write
+ * and attendance change. The quiet-session scheduler check reads this to
+ * tell "still being played" apart from "nobody's touched it in a while".
+ * Best-effort: never let this fail the write it's attached to.
+ */
+export async function touchSessionActivity(db: SupabaseClient, sessionId: string): Promise<void> {
+  await db
+    .from('sessions')
+    .update({ last_activity_at: new Date().toISOString(), awaiting_confirmation: false })
+    .eq('id', sessionId)
+    .eq('status', 'live')
+}
+
 /* ---------------------------------------------------------------------------
  * Realtime — SPEC.md §12
  *

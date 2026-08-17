@@ -10,7 +10,7 @@ export async function leaderboard(ctx: Ctx): Promise<Response> {
 
   const { data, error } = await ctx.db
     .from('player_period_stats')
-    .select('*, players(id, display_name, photo_url, jersey_number, position, status)')
+    .select('*, players(id, display_name, whatsapp_nickname, photo_url, jersey_number, position, status)')
     .eq('period_id', period.id)
     .order('rank', { ascending: true })
 

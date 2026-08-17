@@ -58,8 +58,12 @@ export async function createMatch(ctx: Ctx): Promise<Response> {
       session_id: body.session_id,
       sequence,
       duration_minutes: body.duration_minutes ?? 20,
-      side_a_label: body.side_a_label ?? 'Blue',
-      side_b_label: body.side_b_label ?? 'Red',
+      // No red-team/blue-team split in the live product — everyone plays as
+      // one squad. These labels are only kept because the column predates
+      // that decision; 'Squad'/'Opposition' read as goals-for/goals-against
+      // (own goals land on side_b) rather than a second team.
+      side_a_label: body.side_a_label ?? 'Squad',
+      side_b_label: body.side_b_label ?? 'Opposition',
       status: 'pending',
       created_by: member.user.id,
     })

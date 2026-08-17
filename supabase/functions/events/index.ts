@@ -1,7 +1,7 @@
 /** /events — router only. rule2.txt §7. */
 
 import { createRouter } from '../_shared/router.ts'
-import { recordEvent, recordBatch, voidEvent, listEvents } from './handlers/record.ts'
+import { recordEvent, recordBatch, voidEvent, listEvents, updateEvent } from './handlers/record.ts'
 
 Deno.serve(createRouter('events', {
   GET: {
@@ -10,6 +10,9 @@ Deno.serve(createRouter('events', {
   POST: {
     '': recordEvent,
     'batch': recordBatch,
+  },
+  PATCH: {
+    ':id': updateEvent,
   },
   DELETE: {
     ':id': voidEvent,

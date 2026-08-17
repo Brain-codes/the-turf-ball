@@ -10,7 +10,7 @@ export async function dashboard(ctx: Ctx): Promise<Response> {
 
   const { data: stats } = await ctx.db
     .from('player_period_stats')
-    .select('*, players(id, display_name, photo_url, jersey_number, position)')
+    .select('*, players(id, display_name, whatsapp_nickname, photo_url, jersey_number, position)')
     .eq('period_id', period.id)
     .order('rank', { ascending: true })
 

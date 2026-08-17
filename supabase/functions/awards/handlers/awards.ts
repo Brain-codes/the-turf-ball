@@ -9,7 +9,7 @@ export async function listAwards(ctx: Ctx): Promise<Response> {
 
   const { data, error } = await ctx.db
     .from('awards')
-    .select('*, award_types(code, name, icon, description), players(id, display_name, photo_url, jersey_number)')
+    .select('*, award_types(code, name, icon, description), players(id, display_name, whatsapp_nickname, photo_url, jersey_number)')
     .eq('period_id', period.id)
 
   if (error) throw new Error(error.message)
@@ -20,7 +20,7 @@ export async function listAwards(ctx: Ctx): Promise<Response> {
   if (period.status === 'open') {
     const { data: leader } = await ctx.db
       .from('player_period_stats')
-      .select('*, players(id, display_name, photo_url, jersey_number)')
+      .select('*, players(id, display_name, whatsapp_nickname, photo_url, jersey_number)')
       .eq('period_id', period.id)
       .gt('appearances', 0)
       .order('rank', { ascending: true })
@@ -40,7 +40,7 @@ export async function awardHistory(ctx: Ctx): Promise<Response> {
 
   const { data, error } = await ctx.db
     .from('awards')
-    .select('*, award_types(code, name, icon), players(id, display_name, photo_url), periods(label, year, month)')
+    .select('*, award_types(code, name, icon), players(id, display_name, whatsapp_nickname, photo_url), periods(label, year, month)')
     .eq('organization_id', member.organizationId)
     .order('awarded_at', { ascending: false })
     .limit(100)

@@ -45,6 +45,7 @@ function projectPlayer(player: Record<string, unknown> | null, page: Record<stri
   return {
     id: player.id,
     display_name: player.display_name,
+    whatsapp_nickname: player.whatsapp_nickname,
     jersey_number: player.jersey_number,
     position: player.position,
     photo_url: page.show_photos ? player.photo_url : null,
@@ -126,7 +127,7 @@ export async function getPublicPage(ctx: Ctx): Promise<Response> {
 
   const { data: stats } = await ctx.db
     .from('player_period_stats')
-    .select('*, players(id, display_name, photo_url, jersey_number, position, status)')
+    .select('*, players(id, display_name, whatsapp_nickname, photo_url, jersey_number, position, status)')
     .eq('period_id', period.id)
     .gt('appearances', 0)
     .order('rank', { ascending: true })
@@ -135,7 +136,7 @@ export async function getPublicPage(ctx: Ctx): Promise<Response> {
 
   const { data: awards } = await ctx.db
     .from('awards')
-    .select('value, breakdown, award_types(code, name, icon), players(id, display_name, photo_url, jersey_number)')
+    .select('value, breakdown, award_types(code, name, icon), players(id, display_name, whatsapp_nickname, photo_url, jersey_number)')
     .eq('period_id', period.id)
 
   const { data: periods } = await ctx.db
@@ -145,6 +146,22 @@ export async function getPublicPage(ctx: Ctx): Promise<Response> {
     .order('year', { ascending: false })
     .order('month', { ascending: false })
     .limit(24)
+
+  // A session in progress right now, if the organizer allows sessions to
+  // show at all — surfaced as a pulsating "LIVE" banner on the public page,
+  // linking through to a view-only tracker. Guests can watch, never act.
+  let liveSession: { id: string; title: string | null; session_date: string } | null = null
+  if (page.show_sessions) {
+    const { data } = await ctx.db
+      .from('sessions')
+      .select('id, title, session_date')
+      .eq('organization_id', organizationId)
+      .eq('status', 'live')
+      .order('kickoff_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    liveSession = data ?? null
+  }
 
   let sessions: unknown[] = []
   if (page.show_sessions) {
@@ -221,6 +238,7 @@ export async function getPublicPage(ctx: Ctx): Promise<Response> {
     top_assister: topBy('assists'),
     top_keeper: topBy('clean_sheets'),
     sessions,
+    live_session: liveSession,
     settings: {
       show_photos: page.show_photos,
       show_cards: page.show_cards,
@@ -238,7 +256,7 @@ export async function getPublicPlayer(ctx: Ctx): Promise<Response> {
 
   const { data: player } = await ctx.db
     .from('players')
-    .select('id, display_name, photo_url, jersey_number, position')
+    .select('id, display_name, whatsapp_nickname, photo_url, jersey_number, position')
     .eq('id', playerId)
     .eq('organization_id', organizationId)
     .maybeSingle()
@@ -319,7 +337,12 @@ export async function getPublicPlayer(ctx: Ctx): Promise<Response> {
   })
 }
 
-/** One session's results. */
+/**
+ * One session's results — also the view-only live tracker. A guest with
+ * this link (no login) can watch a session in progress: score, activity
+ * feed, who's involved. Read-only by construction — this handler has no
+ * write path, same as every other route in `public` except `:slug/join`.
+ */
 export async function getPublicSession(ctx: Ctx): Promise<Response> {
   const [slug, , sessionId] = ctx.segments
   const { organizationId, organization, page } = await loadPage(ctx, slug)
@@ -328,7 +351,7 @@ export async function getPublicSession(ctx: Ctx): Promise<Response> {
 
   const { data: session } = await ctx.db
     .from('sessions')
-    .select('id, session_date, title, status, venue')
+    .select('id, session_date, title, status, venue, actual_kickoff_at, kickoff_at')
     .eq('id', sessionId)
     .eq('organization_id', organizationId)
     .maybeSingle()
@@ -337,16 +360,18 @@ export async function getPublicSession(ctx: Ctx): Promise<Response> {
 
   const { data: matches } = await ctx.db
     .from('matches')
-    .select('id, sequence, side_a_label, side_b_label, side_a_score, side_b_score, status')
+    .select('id, sequence, side_a_label, side_b_label, side_a_score, side_b_score, status, started_at')
     .eq('session_id', sessionId)
     .order('sequence', { ascending: true })
 
   const { data: events } = await ctx.db
     .from('match_events')
-    .select('match_id, event_type, minute, players!match_events_player_id_fkey(display_name, jersey_number)')
+    .select('match_id, event_type, minute, players!match_events_player_id_fkey(id, display_name, whatsapp_nickname, jersey_number)')
     .eq('session_id', sessionId)
     .is('voided_at', null)
-    .in('event_type', ['goal', 'own_goal', 'assist'])
+    .in('event_type', page.show_cards
+      ? ['goal', 'own_goal', 'assist', 'yellow_card', 'red_card']
+      : ['goal', 'own_goal', 'assist'])
     .order('created_at', { ascending: true })
 
   return successResponse({

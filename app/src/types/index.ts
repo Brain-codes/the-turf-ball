@@ -153,6 +153,12 @@ export interface Session {
   flagged_inactive_at?: string | null
   approved_at?: string | null
   approved_by?: string | null
+  actual_kickoff_at?: string | null
+  ended_at?: string | null
+  scheduled_end_at?: string | null
+  last_activity_at?: string | null
+  last_viewed_at?: string | null
+  awaiting_confirmation?: boolean
   matches?: Match[]
   attendance?: Attendance[]
 }
@@ -209,7 +215,15 @@ export interface MatchEvent {
   minute: number | null
   metadata: Record<string, unknown>
   created_at: string
-  players?: { display_name: string; jersey_number: number | null; photo_url?: string | null }
+  created_by?: string | null
+  edited_at?: string | null
+  edited_by?: string | null
+  players?: {
+    display_name: string
+    whatsapp_nickname?: string | null
+    jersey_number: number | null
+    photo_url?: string | null
+  }
 }
 
 export interface ScoringRule {
@@ -271,6 +285,7 @@ export interface MemberRow {
 export interface PublicPlayerRef {
   id: string
   display_name: string
+  whatsapp_nickname?: string | null
   jersey_number: number | null
   position: PlayerPosition | null
   photo_url: string | null
@@ -309,5 +324,35 @@ export interface PublicPageData {
   top_assister: { player: PublicPlayerRef; value: number } | null
   top_keeper: { player: PublicPlayerRef; value: number } | null
   sessions: Session[]
+  live_session: { id: string; title: string | null; session_date: string } | null
   settings: { show_photos: boolean; show_cards: boolean; show_punctuality: boolean; show_sessions: boolean }
+}
+
+export interface PublicSessionData {
+  organization: { name: string; slug: string; logo_url: string | null }
+  session: {
+    id: string
+    session_date: string
+    title: string | null
+    status: SessionStatus
+    venue: string | null
+    actual_kickoff_at: string | null
+    kickoff_at: string
+  }
+  matches: {
+    id: string
+    sequence: number
+    side_a_label: string
+    side_b_label: string
+    side_a_score: number
+    side_b_score: number
+    status: string
+    started_at: string | null
+  }[]
+  events: {
+    match_id: string
+    event_type: EventType
+    minute: number | null
+    players: { id: string; display_name: string; whatsapp_nickname?: string | null; jersey_number: number | null } | null
+  }[]
 }

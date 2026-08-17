@@ -39,7 +39,7 @@ export async function previewClose(ctx: Ctx): Promise<Response> {
 
   const { data: stats } = await ctx.db
     .from('player_period_stats')
-    .select('*, players(display_name, photo_url, jersey_number)')
+    .select('*, players(display_name, whatsapp_nickname, photo_url, jersey_number)')
     .eq('period_id', periodId)
     .gt('appearances', 0)
     .order('rank', { ascending: true })

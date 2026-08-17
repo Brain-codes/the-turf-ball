@@ -4,7 +4,7 @@ import { api, ApiError } from '@/services/client'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
 import {
-  Badge, Button, Card, EmptyState, ErrorState, PlayerAvatar,
+  Badge, Button, Card, EmptyState, ErrorState, PlayerAvatar, PlayerName,
   SectionTitle, Skeleton,
 } from '@/components/ui'
 import { FadeIn, Sheet, motion } from '@/components/motion'
@@ -73,6 +73,13 @@ export function AwardsScreen() {
                   className="mx-auto mt-4"
                 />
                 <h2 className="mt-4 text-3xl">{data.provisional_leader.players?.display_name}</h2>
+                {data.provisional_leader.players?.whatsapp_nickname &&
+                  data.provisional_leader.players.whatsapp_nickname.trim() !==
+                    (data.provisional_leader.players?.display_name ?? '').trim() && (
+                    <p className="mt-0.5 text-[12px] text-chalk-faint/70">
+                      {data.provisional_leader.players.whatsapp_nickname}
+                    </p>
+                  )}
                 <div className="mt-5 flex justify-center gap-8">
                   <Stat label="Goals" value={data.provisional_leader.goals} />
                   <Stat label="Assists" value={data.provisional_leader.assists} />
@@ -117,9 +124,11 @@ export function AwardsScreen() {
                       <span className="text-2xl">{award.award_types.icon}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-[15px] text-chalk">{award.award_types.name}</span>
-                        <span className="text-[13px] text-chalk-muted">
-                          {award.players.display_name}
-                        </span>
+                        <PlayerName
+                          name={award.players.display_name}
+                          whatsappNickname={award.players.whatsapp_nickname}
+                          className="text-[13px] text-chalk-muted"
+                        />
                       </span>
                       <span className="numeric text-xl text-volt-400">{points(award.value)}</span>
                     </Card>
@@ -145,9 +154,11 @@ export function AwardsScreen() {
                       size="sm"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] text-chalk">
-                        {award.players.display_name}
-                      </span>
+                      <PlayerName
+                        name={award.players.display_name}
+                        whatsappNickname={award.players.whatsapp_nickname}
+                        className="block text-[15px] text-chalk"
+                      />
                       <span className="text-[13px] text-chalk-muted">{award.periods?.label}</span>
                     </span>
                     <span className="numeric text-chalk-muted">{points(award.value)}</span>
@@ -196,6 +207,9 @@ function WinnerCard({ award }: { award: Award }) {
           className="mx-auto mt-5"
         />
         <h2 className="mt-4 text-3xl">{award.players.display_name}</h2>
+        {award.players.whatsapp_nickname && award.players.whatsapp_nickname.trim() !== award.players.display_name.trim() && (
+          <p className="mt-0.5 text-[12px] text-chalk-faint/70">{award.players.whatsapp_nickname}</p>
+        )}
         <div className="numeric mt-4 text-5xl text-volt-400">{points(award.value)}</div>
         <div className="text-[11px] uppercase tracking-wider text-chalk-muted">points</div>
       </div>
@@ -269,6 +283,10 @@ function ClosePeriodSheet({
                 className="mx-auto mt-3"
               />
               <h3 className="mt-3 text-2xl">{preview.winner.players?.display_name}</h3>
+              {preview.winner.players?.whatsapp_nickname &&
+                preview.winner.players.whatsapp_nickname.trim() !== (preview.winner.players?.display_name ?? '').trim() && (
+                  <p className="mt-0.5 text-[12px] text-chalk-faint/70">{preview.winner.players.whatsapp_nickname}</p>
+                )}
               <p className="mt-1 text-[13.5px] text-chalk-muted">
                 {preview.winner.goals} goals · {preview.winner.assists} assists ·{' '}
                 {preview.winner.appearances} appearances

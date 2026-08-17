@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/services/client'
-import { Button, Input, PlayerAvatar, Skeleton } from '@/components/ui'
+import { Button, Input, PlayerAvatar, PlayerName, Skeleton } from '@/components/ui'
 import { AnimatePresence, GoalBurst, Stagger, StaggerItem, UndoToast, motion } from '@/components/motion'
 import { enqueue, flush, newClientKey, pendingCount, startAutoFlush } from '@/lib/offlineQueue'
 import { cn } from '@/lib/cn'
@@ -127,6 +127,19 @@ export function MatchDayScreen() {
         </div>
       )}
 
+      {session.status === 'live' && session.awaiting_confirmation && (
+        <StillGoingPrompt
+          sessionId={session.id}
+          onKeepGoing={() => queryClient.invalidateQueries({ queryKey: ['session', id] })}
+          onEnd={async () => {
+            await flush()
+            await api.post(`sessions/${id}/complete`)
+            queryClient.invalidateQueries()
+            navigate(`/app/sessions/${id}`)
+          }}
+        />
+      )}
+
       {needsAttendance ? (
         <AttendanceStep
           sessionId={session.id}
@@ -141,13 +154,29 @@ export function MatchDayScreen() {
           onFinished={() => queryClient.invalidateQueries({ queryKey: ['session', id] })}
           onQueueChange={setQueued}
         />
+      ) : session.matches && session.matches.length > 0 ? (
+        // A session is one continuous activity — full time doesn't end it,
+        // it just pauses it. Resume the same match rather than starting a
+        // new one, so the clock and goal totals keep going instead of
+        // resetting to zero.
+        <MatchPausedStep
+          match={session.matches[session.matches.length - 1]}
+          onResumed={() => queryClient.invalidateQueries({ queryKey: ['session', id] })}
+          onEndSession={async () => {
+            await flush()
+            await api.post(`sessions/${id}/complete`)
+            queryClient.invalidateQueries()
+            navigate(`/app/sessions/${id}`)
+          }}
+        />
       ) : (
-        // A match got finished but the session hasn't ended — offer to kick
-        // off the next one straight from whoever is still marked present.
+        // Fallback — a live session with no match yet at all (shouldn't
+        // normally happen since `needsAttendance` covers the first-ever
+        // start, but kept in case of old data).
         <AttendanceStep
           sessionId={session.id}
           existingAttendance={session.attendance ?? []}
-          matchNumber={(session.matches?.length ?? 0) + 1}
+          matchNumber={1}
           onDone={() => queryClient.invalidateQueries({ queryKey: ['session', id] })}
           onEndSession={async () => {
             await flush()
@@ -322,9 +351,11 @@ function AttendanceStep({
                 ✓
               </span>
               <PlayerAvatar name={player.display_name} photoUrl={player.photo_url} size="sm" />
-              <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">
-                {player.display_name}
-              </span>
+              <PlayerName
+                name={player.display_name}
+                whatsappNickname={player.whatsapp_nickname}
+                className="flex-1 text-[15px] text-chalk"
+              />
             </button>
           )
         })}
@@ -394,12 +425,114 @@ function AttendanceStep({
 }
 
 /* -------------------------------------------------------------------------- */
+/* The session has gone quiet past its scheduled end — nobody force-closes   */
+/* it while the organizer is still on this screen, but it does check in.     */
+/* -------------------------------------------------------------------------- */
+
+function StillGoingPrompt({
+  sessionId,
+  onKeepGoing,
+  onEnd,
+}: {
+  sessionId: string
+  onKeepGoing: () => void
+  onEnd: () => void
+}) {
+  const [busy, setBusy] = useState<'keep' | 'end' | null>(null)
+
+  async function keepGoing() {
+    setBusy('keep')
+    try {
+      await api.post(`sessions/${sessionId}/keep-alive`)
+      onKeepGoing()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function end() {
+    setBusy('end')
+    try {
+      await onEnd()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="shrink-0 border-b border-volt-400/30 bg-volt-400/10 px-4 py-3">
+      <p className="mb-2 text-center text-[13.5px] text-chalk">
+        This session's gone quiet past its scheduled end time — still going?
+      </p>
+      <div className="flex gap-2">
+        <Button size="sm" fullWidth loading={busy === 'keep'} disabled={busy === 'end'} onClick={keepGoing}>
+          Still going
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          fullWidth
+          loading={busy === 'end'}
+          disabled={busy === 'keep'}
+          onClick={end}
+        >
+          End session
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function MatchPausedStep({
+  match,
+  onResumed,
+  onEndSession,
+}: {
+  match: Match
+  onResumed: () => void
+  onEndSession: () => void
+}) {
+  const [error, setError] = useState<string | null>(null)
+
+  const resume = useMutation({
+    mutationFn: async () => {
+      await api.post(`matches/${match.id}/resume`)
+    },
+    onSuccess: onResumed,
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not resume the match'),
+  })
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
+      <div>
+        <h1 className="mb-1 text-2xl text-chalk">Full time</h1>
+        <p className="text-[14px] text-chalk-muted">
+          Keep recording against this session, or wrap up for the day.
+        </p>
+      </div>
+
+      {error && <p className="text-[14px] text-card-red">{error}</p>}
+
+      <div className="w-full space-y-2">
+        <Button size="xl" fullWidth loading={resume.isPending} onClick={() => resume.mutate()}>
+          Resume
+        </Button>
+        <Button variant="ghost" fullWidth onClick={onEndSession}>
+          End session
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
 /* The live match — the fast recorder                                          */
 /* -------------------------------------------------------------------------- */
 
 interface PlayerStatRow {
   playerId: string
   name: string
+  whatsappNickname: string | null
   photoUrl: string | null
   goals: number
   assists: number
@@ -447,9 +580,12 @@ function LiveMatch({
   const [addingLate, setAddingLate] = useState(false)
   const [lateSearch, setLateSearch] = useState('')
   const [addingLateBusy, setAddingLateBusy] = useState(false)
+  const [addingLateError, setAddingLateError] = useState<string | null>(null)
   const [lateNewName, setLateNewName] = useState('')
   const [lateOneTime, setLateOneTime] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [viewingSquad, setViewingSquad] = useState(false)
+  const [addedFeedback, setAddedFeedback] = useState<string | null>(null)
 
   const startedRef = useRef(match.started_at ? new Date(match.started_at).getTime() : Date.now())
 
@@ -485,16 +621,17 @@ function LiveMatch({
 
   const statRows = useMemo(() => {
     const rows = new Map<string, PlayerStatRow>()
-    const ensure = (playerId: string, name: string, photoUrl: string | null) => {
+    const ensure = (playerId: string, name: string, whatsappNickname: string | null, photoUrl: string | null) => {
       if (!rows.has(playerId)) {
-        rows.set(playerId, { playerId, name, photoUrl, goals: 0, assists: 0, ownGoals: 0, yellowCards: 0, redCards: 0 })
+        rows.set(playerId, { playerId, name, whatsappNickname, photoUrl, goals: 0, assists: 0, ownGoals: 0, yellowCards: 0, redCards: 0 })
       }
       return rows.get(playerId)!
     }
     for (const e of events) {
       const name = e.players?.display_name ?? 'Unknown'
+      const whatsappNickname = e.players?.whatsapp_nickname ?? null
       const photoUrl = e.players?.photo_url ?? null
-      const row = ensure(e.player_id, name, photoUrl)
+      const row = ensure(e.player_id, name, whatsappNickname, photoUrl)
       if (e.event_type === 'goal') row.goals++
       else if (e.event_type === 'assist') row.assists++
       else if (e.event_type === 'own_goal') row.ownGoals++
@@ -524,12 +661,13 @@ function LiveMatch({
   const { data: allOrgPlayers } = useQuery({
     queryKey: ['players', activeOrg?.id],
     queryFn: async () => (await api.get<Player[]>('players')).data,
-    enabled: !!activeOrg && addingLate,
+    enabled: !!activeOrg && (addingLate || viewingSquad),
   })
   const rosterIds = new Set(rosterPlayers.map((p) => p.id))
-  const latecomerCandidates = (allOrgPlayers ?? [])
-    .filter((p) => !rosterIds.has(p.id))
-    .filter((p) => p.display_name.toLowerCase().includes(lateSearch.trim().toLowerCase()))
+  const absentPlayers = (allOrgPlayers ?? []).filter((p) => !rosterIds.has(p.id))
+  const latecomerCandidates = absentPlayers.filter((p) =>
+    p.display_name.toLowerCase().includes(lateSearch.trim().toLowerCase()),
+  )
 
   const filteredRoster = rosterPlayers.filter((p) =>
     p.display_name.toLowerCase().includes(search.trim().toLowerCase()),
@@ -642,20 +780,29 @@ function LiveMatch({
 
   async function addLatecomer(player: Player) {
     setAddingLateBusy(true)
+    setAddingLateError(null)
     try {
       await api.post(`sessions/${sessionId}/attendance`, {
         entries: [{ player_id: player.id, status: 'present', arrived_at: new Date().toISOString() }],
       })
-      await api.post(`matches/${match.id}/roster`, {
+      await api.patch(`matches/${match.id}/roster`, {
         side_a: [...rosterPlayers.map((p) => p.id), player.id],
       })
       await queryClient.invalidateQueries({ queryKey: ['session', sessionId] })
-    } finally {
-      setAddingLateBusy(false)
       setAddingLate(false)
+      setViewingSquad(false)
       setLateSearch('')
       setLateNewName('')
       setLateOneTime(false)
+      setAddedFeedback(`${player.display_name} added to the pitch`)
+      setTimeout(() => setAddedFeedback((current) => (current === `${player.display_name} added to the pitch` ? null : current)), 2500)
+    } catch (err) {
+      // Surface the failure instead of silently closing the sheet — the
+      // reported bug was a tap that "did nothing": in reality the write was
+      // failing and the error was being swallowed.
+      setAddingLateError(err instanceof ApiError ? err.message : 'Could not add that player — try again')
+    } finally {
+      setAddingLateBusy(false)
     }
   }
 
@@ -663,14 +810,16 @@ function LiveMatch({
   async function createAndAddLatecomer() {
     if (lateNewName.trim().length < 1) return
     setAddingLateBusy(true)
+    setAddingLateError(null)
     try {
       const { data: player } = await api.post<Player>('players', {
         first_name: lateNewName.trim(),
         status: lateOneTime ? 'guest' : undefined,
       })
       await addLatecomer(player)
-    } catch {
+    } catch (err) {
       setAddingLateBusy(false)
+      setAddingLateError(err instanceof ApiError ? err.message : 'Could not add that player — try again')
     }
   }
 
@@ -733,13 +882,27 @@ function LiveMatch({
           </span>
         </div>
 
-        <button
-          onClick={() => setAddingLate(true)}
-          className="tap-target shrink-0 rounded-lg border border-pitch-700 px-2.5 text-[12px] font-medium text-chalk-muted transition-colors active:bg-pitch-800"
-        >
-          + Add player
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setViewingSquad(true)}
+            className="tap-target rounded-lg border border-pitch-700 px-2.5 text-[12px] font-medium text-chalk-muted transition-colors active:bg-pitch-800"
+          >
+            Squad
+          </button>
+          <button
+            onClick={() => setAddingLate(true)}
+            className="tap-target rounded-lg border border-pitch-700 px-2.5 text-[12px] font-medium text-chalk-muted transition-colors active:bg-pitch-800"
+          >
+            + Add player
+          </button>
+        </div>
       </div>
+
+      {addedFeedback && (
+        <div className="shrink-0 border-b border-volt-400/30 bg-volt-400/10 px-4 py-2 text-center text-[13px] text-volt-400">
+          {addedFeedback}
+        </div>
+      )}
 
       {/* Selection area — the only region that scrolls */}
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -846,9 +1009,11 @@ function LiveMatch({
                                   {i + 1}
                                 </span>
                                 <PlayerAvatar name={r.name} photoUrl={r.photoUrl} size="sm" />
-                                <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium text-chalk">
-                                  {r.name}
-                                </span>
+                                <PlayerName
+                                  name={r.name}
+                                  whatsappNickname={r.whatsappNickname}
+                                  className="flex-1 text-[14.5px] font-medium text-chalk"
+                                />
                                 <div className="flex shrink-0 items-center gap-2.5 text-[12.5px]">
                                   {r.goals > 0 && (
                                     <span className="text-chalk-muted">⚽ <span className="numeric font-semibold text-volt-400">{r.goals}</span></span>
@@ -915,6 +1080,13 @@ function LiveMatch({
                             <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pt-0.5">
                               <span className="min-w-0 truncate text-[13.5px] text-chalk">
                                 <span className="font-medium">{e.players?.display_name ?? 'Unknown'}</span>
+                                {e.players?.whatsapp_nickname &&
+                                  e.players.whatsapp_nickname.trim() !== (e.players?.display_name ?? '').trim() && (
+                                    <span className="text-[11px] font-normal text-chalk-faint/70">
+                                      {' '}
+                                      ({e.players.whatsapp_nickname})
+                                    </span>
+                                  )}
                                 <span className="text-chalk-muted"> — {EVENT_LABEL[e.event_type] ?? e.event_type}</span>
                               </span>
                               {e.minute !== null && (
@@ -965,12 +1137,18 @@ function LiveMatch({
                   setLateSearch('')
                   setLateNewName('')
                   setLateOneTime(false)
+                  setAddingLateError(null)
                 }}
                 className="text-[14px] text-chalk-muted"
               >
                 Close
               </button>
             </div>
+            {addingLateError && (
+              <p className="mb-3 rounded-lg border border-card-red/30 bg-card-red/10 px-3 py-2 text-[13px] text-card-red">
+                {addingLateError}
+              </p>
+            )}
             <Input
               value={lateSearch}
               onChange={(e) => setLateSearch(e.target.value)}
@@ -987,7 +1165,11 @@ function LiveMatch({
                   className="tap-target flex w-full items-center gap-3 rounded-xl border border-pitch-700 bg-pitch-800 px-3.5 text-left"
                 >
                   <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
-                  <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">{p.display_name}</span>
+                  <PlayerName
+                    name={p.display_name}
+                    whatsappNickname={p.whatsapp_nickname}
+                    className="flex-1 text-[15px] text-chalk"
+                  />
                 </button>
               ))}
               {latecomerCandidates.length === 0 && !lateSearch && (
@@ -1020,6 +1202,96 @@ function LiveMatch({
               </div>
               <OneTimeToggle checked={lateOneTime} onChange={setLateOneTime} />
             </div>
+          </div>
+        </div>
+      )}
+
+      {viewingSquad && (
+        <div className="fixed inset-0 z-30 flex items-end bg-black/60 backdrop-blur-sm">
+          <div className="flex max-h-[80vh] w-full flex-col rounded-t-2xl border-t border-pitch-700 bg-pitch-900 p-4">
+            <div className="mb-3 flex shrink-0 items-center justify-between">
+              <h3 className="text-lg text-chalk">Squad</h3>
+              <button onClick={() => setViewingSquad(false)} className="text-[14px] text-chalk-muted">
+                Close
+              </button>
+            </div>
+            {addingLateError && (
+              <p className="mb-3 shrink-0 rounded-lg border border-card-red/30 bg-card-red/10 px-3 py-2 text-[13px] text-card-red">
+                {addingLateError}
+              </p>
+            )}
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+              <div>
+                <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-chalk-faint">
+                  On the pitch — {rosterPlayers.length}
+                </p>
+                <div className="space-y-2">
+                  {rosterPlayers
+                    .slice()
+                    .sort((a, b) => a.display_name.localeCompare(b.display_name))
+                    .map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center gap-3 rounded-xl border border-pitch-700 bg-pitch-800 px-3.5 py-2.5"
+                      >
+                        <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
+                        <PlayerName
+                          name={p.display_name}
+                          whatsappNickname={p.whatsapp_nickname}
+                          className="flex-1 text-[15px] text-chalk"
+                        />
+                        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-volt-400">
+                          Present
+                        </span>
+                      </div>
+                    ))}
+                  {rosterPlayers.length === 0 && (
+                    <p className="py-2 text-center text-[13.5px] text-chalk-faint">Nobody on the pitch yet</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-chalk-faint">
+                  Not present — {absentPlayers.length}
+                </p>
+                <div className="space-y-2">
+                  {absentPlayers.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-3 rounded-xl border border-pitch-700 bg-pitch-800/50 px-3.5 py-2.5"
+                    >
+                      <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
+                      <PlayerName
+                        name={p.display_name}
+                        whatsappNickname={p.whatsapp_nickname}
+                        className="flex-1 text-[15px] text-chalk-muted"
+                      />
+                      <button
+                        disabled={addingLateBusy}
+                        onClick={() => addLatecomer(p)}
+                        className="tap-target shrink-0 rounded-lg border border-volt-400 px-2.5 text-[12px] font-medium text-volt-400 transition-colors active:bg-volt-400/15 disabled:opacity-50"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                  ))}
+                  {absentPlayers.length === 0 && (
+                    <p className="py-2 text-center text-[13.5px] text-chalk-faint">Everyone in the squad is here</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setViewingSquad(false)
+                setAddingLate(true)
+              }}
+              className="tap-target mt-3 shrink-0 w-full rounded-xl border border-pitch-700 bg-pitch-800 text-[14px] font-medium text-chalk"
+            >
+              + Add player not in squad
+            </button>
           </div>
         </div>
       )}
@@ -1111,6 +1383,11 @@ function PlayerGrid({
           <span className="w-full truncate px-1 text-center text-[13px] font-medium text-chalk">
             {player.display_name}
           </span>
+          {player.whatsapp_nickname && player.whatsapp_nickname.trim() !== player.display_name.trim() && (
+            <span className="-mt-1 w-full truncate px-1 text-center text-[10.5px] text-chalk-faint/70">
+              {player.whatsapp_nickname}
+            </span>
+          )}
         </button>
       ))}
     </div>

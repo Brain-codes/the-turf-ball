@@ -12,7 +12,7 @@ import { Spinner } from '@/components/ui'
  * Only the landing and public pages are eager; everything else loads on demand.
  */
 import { Landing } from '@/features/public/Landing'
-import { PublicPageScreen, PublicPlayerScreen } from '@/features/public/PublicPage'
+import { PublicPageScreen, PublicPlayerScreen, PublicLiveSessionScreen } from '@/features/public/PublicPage'
 import { JoinTeamScreen } from '@/features/onboarding/JoinTeam'
 
 const LoginScreen = lazy(() => import('@/features/auth/screens').then((m) => ({ default: m.LoginScreen })))
@@ -77,6 +77,7 @@ export function Router() {
       <Route path="/" element={<Landing />} />
       <Route path="/t/:slug" element={<PublicPageScreen />} />
       <Route path="/t/:slug/player/:playerId" element={<PublicPlayerScreen />} />
+      <Route path="/t/:slug/live/:sessionId" element={<PublicLiveSessionScreen />} />
       <Route path="/join/:token" element={<JoinScreen />} />
       <Route path="/play/:slug" element={<JoinTeamScreen />} />
 

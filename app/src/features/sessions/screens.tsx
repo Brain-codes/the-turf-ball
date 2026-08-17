@@ -6,13 +6,35 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
 import {
   Badge, Button, Card, EmptyState, ErrorState, Field, Input,
-  PlayerAvatar, SectionTitle, Skeleton,
+  PlayerAvatar, PlayerName, SectionTitle, Select, Skeleton,
 } from '@/components/ui'
-import { FadeIn } from '@/components/motion'
+import { FadeIn, Sheet } from '@/components/motion'
 import { cn } from '@/lib/cn'
 import { BAND_LABEL, countdown, fullDate, shortDate, time } from '@/lib/format'
 import { sessionCounted } from '@/types'
-import type { Attendance, Session, UpcomingSlot } from '@/types'
+import type { Attendance, MatchEvent, Player, Session, UpcomingSlot } from '@/types'
+
+const EDIT_WINDOW_HOURS = 5
+
+function editWindowOpenFor(session: Pick<Session, 'ended_at'>): boolean {
+  if (!session.ended_at) return false
+  const hoursSince = (Date.now() - new Date(session.ended_at).getTime()) / 3_600_000
+  return hoursSince <= EDIT_WINDOW_HOURS
+}
+
+/** "1h 20m" / "45m" — short duration for delay/overtime/elapsed display. */
+function formatMins(totalMinutes: number): string {
+  const mins = Math.round(Math.abs(totalMinutes))
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+const EVENT_LABEL: Record<string, string> = {
+  goal: 'Goal', own_goal: 'Own goal', assist: 'Assist',
+  yellow_card: 'Yellow card', red_card: 'Red card',
+  clean_sheet: 'Clean sheet', save: 'Save', motm: 'Man of the match',
+}
 
 /* -------------------------------------------------------------------------- */
 /* Session list                                                                */
@@ -382,8 +404,20 @@ export function SessionDetailScreen() {
   if (!session) return null
 
   const isCompleted = session.status === 'completed'
-  const presentCount = session.attendance.filter((a) => a.status === 'present').length
   const flagged = !!session.flagged_inactive_at
+  const editable = isCompleted && editWindowOpenFor(session)
+
+  const delayMins = session.actual_kickoff_at
+    ? (new Date(session.actual_kickoff_at).getTime() - new Date(session.kickoff_at).getTime()) / 60_000
+    : 0
+  const overtimeMins = session.ended_at && session.scheduled_end_at
+    ? (new Date(session.ended_at).getTime() - new Date(session.scheduled_end_at).getTime()) / 60_000
+    : 0
+  const elapsedMins = session.ended_at && session.actual_kickoff_at
+    ? (new Date(session.ended_at).getTime() - new Date(session.actual_kickoff_at).getTime()) / 60_000
+    : null
+
+  const present = session.attendance.filter((a) => a.status === 'present')
 
   return (
     <div className="pb-8">
@@ -408,47 +442,93 @@ export function SessionDetailScreen() {
           </Card>
         )}
 
-        {presentCount > 0 && (
-          <section className="mb-7">
-            <SectionTitle>Who turned up</SectionTitle>
-            <div className="surface divide-y divide-pitch-700 overflow-hidden">
-              {session.attendance.filter((a) => a.status === 'present').map((a) => (
-                <div key={a.id} className="flex items-center gap-3 px-3.5 py-3">
-                  <PlayerAvatar
-                    name={a.players?.display_name ?? 'Player'}
-                    photoUrl={a.players?.photo_url}
-                    size="sm"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">
-                    {a.players?.display_name}
-                  </span>
-                  {a.punctuality_band && (
-                    <Badge tone={a.punctuality_band === 'early' ? 'volt' : a.punctuality_band === 'on_time' ? 'neutral' : 'warn'}>
-                      {BAND_LABEL[a.punctuality_band]}
-                    </Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
+        {/* Short, glanceable sections first — the stuff you're most likely to
+            be here for (result, timing, fixing a mistake) shouldn't require
+            scrolling past a long attendance list to reach. */}
         {session.matches.length > 0 && (
           <section className="mb-7">
             <SectionTitle>Matches</SectionTitle>
             <div className="space-y-2">
               {session.matches.map((match) => (
                 <Card key={match.id} className="flex items-center gap-3">
-                  <span className="text-[13px] text-chalk-muted">#{match.sequence}</span>
-                  <span className="flex-1 text-[14px] text-chalk">
-                    {match.side_a_label} v {match.side_b_label}
-                  </span>
-                  <span className="numeric text-xl text-chalk">
-                    {match.side_a_score}–{match.side_b_score}
-                  </span>
+                  <span className="flex-1 text-[14px] text-chalk">Match #{match.sequence}</span>
+                  <span className="numeric text-xl text-chalk">{match.side_a_score} goals</span>
+                  {match.side_b_score > 0 && (
+                    <span className="numeric text-[13px] text-chalk-faint">
+                      ({match.side_b_score} own goal{match.side_b_score === 1 ? '' : 's'})
+                    </span>
+                  )}
                 </Card>
               ))}
             </div>
+          </section>
+        )}
+
+        {(session.actual_kickoff_at || session.ended_at) && (
+          <section className="mb-7">
+            <SectionTitle>Timeline</SectionTitle>
+            <Card className="space-y-1.5 text-[13.5px]">
+              <div className="flex justify-between">
+                <span className="text-chalk-muted">Scheduled kick-off</span>
+                <span className="text-chalk">{time(session.kickoff_at)}</span>
+              </div>
+              {session.actual_kickoff_at && (
+                <div className="flex justify-between">
+                  <span className="text-chalk-muted">Actually started</span>
+                  <span className="text-chalk">
+                    {time(session.actual_kickoff_at)}
+                    {Math.abs(delayMins) >= 1 && (
+                      <span className="text-chalk-faint"> ({formatMins(delayMins)} {delayMins > 0 ? 'late' : 'early'})</span>
+                    )}
+                  </span>
+                </div>
+              )}
+              {session.ended_at && (
+                <div className="flex justify-between">
+                  <span className="text-chalk-muted">Ended</span>
+                  <span className="text-chalk">
+                    {time(session.ended_at)}
+                    {overtimeMins >= 1 && (
+                      <span className="text-chalk-faint"> ({formatMins(overtimeMins)} over)</span>
+                    )}
+                  </span>
+                </div>
+              )}
+              {elapsedMins !== null && (
+                <div className="flex justify-between">
+                  <span className="text-chalk-muted">Total time played</span>
+                  <span className="numeric text-chalk">{formatMins(elapsedMins)}</span>
+                </div>
+              )}
+            </Card>
+          </section>
+        )}
+
+        {isCompleted && (
+          <section className="mb-7">
+            <SectionTitle>Correcting the record</SectionTitle>
+            {editable ? (
+              <EditEventsPanel
+                sessionId={session.id}
+                matchId={session.matches[session.matches.length - 1]?.id}
+                editCloseAt={new Date(new Date(session.ended_at!).getTime() + EDIT_WINDOW_HOURS * 3_600_000)}
+              />
+            ) : (
+              <p className="text-[13px] text-chalk-faint">
+                {session.ended_at
+                  ? `The 5-hour window to correct goals, assists and cards closed at ${time(
+                      new Date(new Date(session.ended_at).getTime() + EDIT_WINDOW_HOURS * 3_600_000),
+                    )}.`
+                  : 'Nothing to correct yet.'}
+              </p>
+            )}
+          </section>
+        )}
+
+        {present.length > 0 && (
+          <section className="mb-7">
+            <SectionTitle>Who turned up ({present.length})</SectionTitle>
+            <AttendanceList attendance={present} />
           </section>
         )}
 
@@ -458,12 +538,458 @@ export function SessionDetailScreen() {
           </Button>
         )}
 
-        {!isCompleted && presentCount === 0 && (
+        {!isCompleted && present.length === 0 && (
           <p className="mt-2 text-center text-[13px] text-chalk-faint">
             You'll mark who's here as soon as you enter
           </p>
         )}
       </div>
     </div>
+  )
+}
+
+const ATTENDANCE_PREVIEW_COUNT = 5
+
+/** A squad can be 5 people or 50 — collapsed to a short preview by default. */
+function AttendanceList({ attendance }: { attendance: Attendance[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? attendance : attendance.slice(0, ATTENDANCE_PREVIEW_COUNT)
+  const hiddenCount = attendance.length - visible.length
+
+  return (
+    <div>
+      <div className="surface divide-y divide-pitch-700 overflow-hidden">
+        {visible.map((a) => (
+          <div key={a.id} className="flex items-center gap-3 px-3.5 py-3">
+            <PlayerAvatar
+              name={a.players?.display_name ?? 'Player'}
+              photoUrl={a.players?.photo_url}
+              size="sm"
+            />
+            <PlayerName
+              name={a.players?.display_name ?? 'Player'}
+              whatsappNickname={a.players?.whatsapp_nickname}
+              className="flex-1 text-[15px] text-chalk"
+            />
+            {a.punctuality_band && (
+              <Badge tone={a.punctuality_band === 'early' ? 'volt' : a.punctuality_band === 'on_time' ? 'neutral' : 'warn'}>
+                {BAND_LABEL[a.punctuality_band]}
+              </Badge>
+            )}
+          </div>
+        ))}
+      </div>
+      {attendance.length > ATTENDANCE_PREVIEW_COUNT && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-2 w-full text-center text-[13px] text-chalk-muted underline decoration-chalk-faint/40"
+        >
+          {expanded ? 'Show fewer' : `View all ${attendance.length} (${hiddenCount} more)`}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Post-session correction — open for 5 hours after a session ends. Missed a  */
+/* goal or assist live? Fix it here. Every change is logged, not silent.      */
+/* -------------------------------------------------------------------------- */
+
+/** Types a corrected/added event can actually be. Assist isn't one of them
+ *  — an assist only ever exists as part of a goal, never standalone. */
+const ADDABLE_TYPES = ['goal', 'own_goal', 'yellow_card', 'red_card'] as const
+const CORRECTABLE_TYPES = ['goal', 'own_goal', 'assist', 'yellow_card', 'red_card'] as const
+
+interface GoalPlay {
+  goal: MatchEvent
+  assist: MatchEvent | null
+}
+
+function groupId(e: MatchEvent): string | undefined {
+  return (e.metadata as Record<string, unknown> | undefined)?.group_id as string | undefined
+}
+
+const PREVIEW_COUNT = 5
+
+function EditEventsPanel({
+  sessionId,
+  matchId,
+  editCloseAt,
+}: {
+  sessionId: string
+  matchId: string | undefined
+  editCloseAt: Date
+}) {
+  const queryClient = useQueryClient()
+  const [addOpen, setAddOpen] = useState(false)
+  const [editingGoal, setEditingGoal] = useState<GoalPlay | null>(null)
+  const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null)
+  const [expanded, setExpanded] = useState(false)
+
+  const { data: events, isLoading } = useQuery({
+    queryKey: ['session-events', sessionId],
+    queryFn: async () => (await api.get<MatchEvent[]>('events', { session_id: sessionId })).data,
+  })
+
+  const { data: roster } = useQuery({
+    queryKey: ['players'],
+    queryFn: async () => (await api.get<Player[]>('players')).data,
+  })
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['session-events', sessionId] })
+    queryClient.invalidateQueries({ queryKey: ['session', sessionId] })
+  }
+
+  const rosterOptions = roster ?? []
+  const correctable = (events ?? []).filter((e) =>
+    CORRECTABLE_TYPES.includes(e.event_type as typeof CORRECTABLE_TYPES[number]),
+  )
+  const plays: GoalPlay[] = correctable
+    .filter((e) => e.event_type === 'goal')
+    .map((goal) => ({
+      goal,
+      assist: correctable.find((e) => e.event_type === 'assist' && groupId(e) === groupId(goal)) ?? null,
+    }))
+  const otherEvents = correctable.filter((e) => e.event_type === 'own_goal' || e.event_type === 'yellow_card' || e.event_type === 'red_card')
+  const allRows: (GoalPlay | MatchEvent)[] = [...plays, ...otherEvents].sort((a, b) => {
+    const aTime = 'goal' in a ? a.goal.created_at : a.created_at
+    const bTime = 'goal' in b ? b.goal.created_at : b.created_at
+    return aTime.localeCompare(bTime)
+  })
+  const visibleRows = expanded ? allRows : allRows.slice(0, PREVIEW_COUNT)
+  const hiddenCount = allRows.length - visibleRows.length
+
+  return (
+    <div>
+      <p className="mb-3 text-[13px] text-chalk-faint">
+        Open for corrections until {time(editCloseAt)} — missed a goal or assist, or something's wrong?
+      </p>
+
+      {isLoading ? (
+        <Skeleton className="h-24" />
+      ) : allRows.length === 0 ? (
+        <p className="text-[13px] text-chalk-faint">Nothing recorded yet.</p>
+      ) : (
+        <div className="surface divide-y divide-pitch-700 overflow-hidden">
+          {visibleRows.map((row) =>
+            'goal' in row ? (
+              <button
+                key={row.goal.id}
+                onClick={() => setEditingGoal(row)}
+                className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors active:bg-pitch-800"
+              >
+                <span className="text-lg">⚽</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14px] text-chalk">
+                    <span className="font-medium">{row.goal.players?.display_name ?? 'Unknown'}</span>
+                    {row.goal.edited_at && <span className="ml-1.5 text-[11px] text-chalk-faint">(edited)</span>}
+                  </span>
+                  <span className="block text-[12.5px] text-chalk-muted">
+                    {row.assist ? `Assist: ${row.assist.players?.display_name ?? 'Unknown'}` : 'No assist'}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[12px] text-chalk-faint">Edit ›</span>
+              </button>
+            ) : (
+              <button
+                key={row.id}
+                onClick={() => setEditingEvent(row)}
+                className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors active:bg-pitch-800"
+              >
+                <span className="text-lg">{row.event_type === 'own_goal' ? '🥅' : row.event_type === 'yellow_card' ? '🟨' : '🟥'}</span>
+                <span className="min-w-0 flex-1 text-[14px] text-chalk">
+                  <span className="font-medium">{row.players?.display_name ?? 'Unknown'}</span>
+                  <span className="text-chalk-muted"> — {EVENT_LABEL[row.event_type]}</span>
+                  {row.edited_at && <span className="ml-1.5 text-[11px] text-chalk-faint">(edited)</span>}
+                </span>
+                <span className="shrink-0 text-[12px] text-chalk-faint">Edit ›</span>
+              </button>
+            ),
+          )}
+        </div>
+      )}
+
+      {allRows.length > PREVIEW_COUNT && (
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="mt-2 w-full text-center text-[13px] text-chalk-muted underline decoration-chalk-faint/40"
+        >
+          {expanded ? 'Show fewer' : `View all ${allRows.length} (${hiddenCount} more)`}
+        </button>
+      )}
+
+      <Button variant="ghost" fullWidth className="mt-3" onClick={() => setAddOpen(true)}>
+        + Add something missed
+      </Button>
+
+      <AddEventSheet
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        matchId={matchId}
+        roster={rosterOptions}
+        onDone={invalidate}
+      />
+      <EditGoalSheet
+        play={editingGoal}
+        onClose={() => setEditingGoal(null)}
+        roster={rosterOptions}
+        onDone={invalidate}
+      />
+      <EditSimpleEventSheet
+        event={editingEvent}
+        onClose={() => setEditingEvent(null)}
+        roster={rosterOptions}
+        onDone={invalidate}
+      />
+    </div>
+  )
+}
+
+/** Add a goal (with an optional assist right there), own goal, or card — via a modal, not an inline form buried in the page. */
+function AddEventSheet({
+  open,
+  onClose,
+  matchId,
+  roster,
+  onDone,
+}: {
+  open: boolean
+  onClose: () => void
+  matchId: string | undefined
+  roster: Player[]
+  onDone: () => void
+}) {
+  const [type, setType] = useState<typeof ADDABLE_TYPES[number]>('goal')
+  const [playerId, setPlayerId] = useState('')
+  const [assisterId, setAssisterId] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const reset = () => {
+    setType('goal')
+    setPlayerId('')
+    setAssisterId('')
+    setError(null)
+  }
+
+  const add = useMutation({
+    mutationFn: async () => {
+      if (!matchId) throw new Error('No match to record against')
+      await api.post('events', {
+        match_id: matchId,
+        event_type: type,
+        player_id: playerId,
+        related_player_id: type === 'goal' && assisterId ? assisterId : undefined,
+      })
+    },
+    onSuccess: () => {
+      onDone()
+      reset()
+      onClose()
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not add that'),
+  })
+
+  return (
+    <Sheet open={open} onClose={() => { reset(); onClose() }} title="Add something missed">
+      <div className="space-y-3">
+        {error && <p className="text-[13px] text-card-red">{error}</p>}
+
+        <Field label="What happened">
+          <Select value={type} onChange={(e) => { setType(e.target.value as typeof type); setAssisterId('') }}>
+            {ADDABLE_TYPES.map((t) => (
+              <option key={t} value={t}>{EVENT_LABEL[t]}</option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label={type === 'goal' ? 'Who scored' : 'Who'}>
+          <Select value={playerId} onChange={(e) => setPlayerId(e.target.value)}>
+            <option value="">Select a player</option>
+            {roster.map((p) => (
+              <option key={p.id} value={p.id}>{p.display_name}</option>
+            ))}
+          </Select>
+        </Field>
+
+        {type === 'goal' && (
+          <Field label="Assist (optional)">
+            <Select value={assisterId} onChange={(e) => setAssisterId(e.target.value)}>
+              <option value="">No assist — solo goal</option>
+              {roster.filter((p) => p.id !== playerId).map((p) => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        <Button
+          fullWidth
+          loading={add.isPending}
+          disabled={!playerId || !matchId}
+          onClick={() => add.mutate()}
+        >
+          Add
+        </Button>
+      </div>
+    </Sheet>
+  )
+}
+
+/**
+ * Editing a goal IS how you manage its assist — assign one, change it,
+ * remove it — because an assist can never exist apart from the goal it
+ * belongs to. Also where you'd reassign who scored, or remove the goal
+ * (which takes its assist with it) entirely.
+ */
+function EditGoalSheet({
+  play,
+  onClose,
+  roster,
+  onDone,
+}: {
+  play: GoalPlay | null
+  onClose: () => void
+  roster: Player[]
+  onDone: () => void
+}) {
+  const [scorerId, setScorerId] = useState('')
+  const [assisterId, setAssisterId] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (play) {
+      setScorerId(play.goal.player_id)
+      setAssisterId(play.assist?.player_id ?? '')
+      setError(null)
+    }
+  }, [play])
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!play) return
+      const patch: Record<string, unknown> = {}
+      if (scorerId !== play.goal.player_id) patch.player_id = scorerId
+      if (assisterId !== (play.assist?.player_id ?? '')) patch.related_player_id = assisterId || null
+      if (Object.keys(patch).length === 0) return
+      await api.patch(`events/${play.goal.id}`, patch)
+    },
+    onSuccess: () => { onDone(); onClose() },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not save that correction'),
+  })
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      if (!play) return
+      await api.del(`events/${play.goal.id}`)
+    },
+    onSuccess: () => { onDone(); onClose() },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not remove that'),
+  })
+
+  return (
+    <Sheet open={!!play} onClose={onClose} title="Edit goal">
+      {play && (
+        <div className="space-y-3">
+          {error && <p className="text-[13px] text-card-red">{error}</p>}
+
+          <Field label="Who scored">
+            <Select value={scorerId} onChange={(e) => setScorerId(e.target.value)}>
+              {roster.map((p) => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Assist">
+            <Select value={assisterId} onChange={(e) => setAssisterId(e.target.value)}>
+              <option value="">No assist — solo goal</option>
+              {roster.filter((p) => p.id !== scorerId).map((p) => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </Select>
+          </Field>
+
+          <Button fullWidth loading={save.isPending} onClick={() => save.mutate()}>
+            Save
+          </Button>
+          <Button
+            variant="ghost"
+            fullWidth
+            loading={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            Remove this goal{play.assist ? ' and its assist' : ''}
+          </Button>
+        </div>
+      )}
+    </Sheet>
+  )
+}
+
+/** Own goals and cards — one player, no assist concept, so a much smaller sheet. */
+function EditSimpleEventSheet({
+  event,
+  onClose,
+  roster,
+  onDone,
+}: {
+  event: MatchEvent | null
+  onClose: () => void
+  roster: Player[]
+  onDone: () => void
+}) {
+  const [playerId, setPlayerId] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (event) {
+      setPlayerId(event.player_id)
+      setError(null)
+    }
+  }, [event])
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!event || playerId === event.player_id) return
+      await api.patch(`events/${event.id}`, { player_id: playerId })
+    },
+    onSuccess: () => { onDone(); onClose() },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not save that correction'),
+  })
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      if (!event) return
+      await api.del(`events/${event.id}`)
+    },
+    onSuccess: () => { onDone(); onClose() },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not remove that'),
+  })
+
+  return (
+    <Sheet open={!!event} onClose={onClose} title={event ? EVENT_LABEL[event.event_type] : ''}>
+      {event && (
+        <div className="space-y-3">
+          {error && <p className="text-[13px] text-card-red">{error}</p>}
+
+          <Field label="Who">
+            <Select value={playerId} onChange={(e) => setPlayerId(e.target.value)}>
+              {roster.map((p) => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </Select>
+          </Field>
+
+          <Button fullWidth loading={save.isPending} onClick={() => save.mutate()}>
+            Save
+          </Button>
+          <Button variant="ghost" fullWidth loading={remove.isPending} onClick={() => remove.mutate()}>
+            Remove
+          </Button>
+        </div>
+      )}
+    </Sheet>
   )
 }

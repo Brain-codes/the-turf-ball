@@ -174,6 +174,36 @@ export function PlayerAvatar({
   )
 }
 
+/**
+ * A lot of people at the pitch know each other by WhatsApp name, not the
+ * name on the roster — this shows both, the nickname small and faint so it
+ * reads as a hint, not a second identity. Nothing renders if there's no
+ * nickname or it's identical to the display name (redundant either way).
+ */
+export function PlayerName({
+  name,
+  whatsappNickname,
+  className,
+  nicknameClassName,
+}: {
+  name: string
+  whatsappNickname?: string | null
+  className?: string
+  nicknameClassName?: string
+}) {
+  const showNickname = whatsappNickname && whatsappNickname.trim() && whatsappNickname.trim() !== name.trim()
+  return (
+    <span className={cn('min-w-0 truncate', className)}>
+      {name}
+      {showNickname && (
+        <span className={cn('ml-1.5 text-[11px] font-normal text-chalk-faint/70', nicknameClassName)}>
+          ({whatsappNickname})
+        </span>
+      )}
+    </span>
+  )
+}
+
 export function RankBadge({ rank, className }: { rank: number; className?: string }) {
   // Only the podium gets colour. If every rank were highlighted, none would be.
   const tone =
