@@ -33,7 +33,7 @@ export function AppShell() {
           <select
             value={activeOrg?.id ?? ''}
             onChange={(e) => switchOrg(e.target.value)}
-            className="mb-5 h-10 w-full rounded-lg border border-pitch-700 bg-pitch-800 px-3 text-[16px] text-chalk focus:outline-none"
+            className="mb-5 h-10 w-full rounded-lg border border-pitch-700 bg-pitch-800 px-3 text-[14px] text-chalk focus:outline-none"
           >
             {organizations.map((o) => (
               <option key={o.id} value={o.id}>{o.name}</option>

@@ -334,7 +334,7 @@ function FullAddForm({ onDone }: { onDone: () => void }) {
           type="file"
           accept="image/jpeg,image/png,image/webp"
           onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
-          className="block w-full text-[16px] text-chalk-muted file:mr-3 file:rounded-lg file:border-0 file:bg-pitch-700 file:px-3 file:py-2 file:text-[13px] file:text-chalk"
+          className="block w-full text-[13px] text-chalk-muted file:mr-3 file:rounded-lg file:border-0 file:bg-pitch-700 file:px-3 file:py-2 file:text-[13px] file:text-chalk"
         />
       </Field>
       {error && <p className="text-[14px] text-card-red">{error}</p>}

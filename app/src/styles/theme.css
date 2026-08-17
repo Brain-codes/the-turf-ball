@@ -90,6 +90,16 @@
     color: inherit;
   }
 
+  /* iOS Safari zooms the page on focus if a form field's font-size is
+     under 16px. This targets iOS WebKit only (via a touch-callout
+     feature check no other browser matches) so desktop/Android keep
+     their normal, smaller field text. */
+  @supports (-webkit-touch-callout: none) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
   /* Volt focus ring — visible, never removed. */
   :focus-visible {
     outline: 2px solid var(--color-volt-400);

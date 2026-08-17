@@ -261,7 +261,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
       <input
         ref={ref}
         className={cn(
-          'h-11 w-full rounded-lg border bg-pitch-900 px-3.5 text-[16px] text-chalk',
+          'h-11 w-full rounded-lg border bg-pitch-900 px-3.5 text-[15px] text-chalk',
           'placeholder:text-chalk-faint focus:outline-none',
           invalid ? 'border-card-red' : 'border-pitch-700 focus:border-turf-400',
           className,
@@ -278,7 +278,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
       <select
         ref={ref}
         className={cn(
-          'h-11 w-full appearance-none rounded-lg border border-pitch-700 bg-pitch-900 px-3.5 text-[16px] text-chalk',
+          'h-11 w-full appearance-none rounded-lg border border-pitch-700 bg-pitch-900 px-3.5 text-[15px] text-chalk',
           'focus:border-turf-400 focus:outline-none',
           className,
         )}
