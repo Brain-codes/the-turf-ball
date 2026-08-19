@@ -35,6 +35,7 @@ export interface Organization {
   playing_days: string[]
   default_kickoff: string
   timezone: string
+  is_public: boolean
   role?: Role
   settings?: OrgSettings
   current_period?: Period

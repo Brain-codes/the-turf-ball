@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui'
 import { FadeIn, Stagger, StaggerItem } from '@/components/motion'
+import { PublicNavbar } from '@/components/layout/PublicNavbar'
 
 const FEATURES = [
   {
@@ -28,6 +29,7 @@ const FEATURES = [
 export function Landing() {
   return (
     <div className="min-h-dvh">
+      <PublicNavbar />
       <header className="pitch-lines px-5 pb-16 pt-16 text-center">
         <FadeIn>
           <div className="mb-5 text-5xl">⚽</div>
@@ -48,6 +50,13 @@ export function Landing() {
               <Button variant="ghost" size="lg" fullWidth>I already have an account</Button>
             </Link>
           </div>
+
+          <Link
+            to="/leaderboard"
+            className="mx-auto mt-6 flex w-fit items-center gap-1.5 text-[13.5px] text-chalk-muted underline decoration-chalk-faint/40 transition-colors hover:text-volt-400"
+          >
+            🏆 See every team's table
+          </Link>
         </FadeIn>
       </header>
 

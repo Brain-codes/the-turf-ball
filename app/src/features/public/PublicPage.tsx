@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/services/client'
 import { cn } from '@/lib/cn'
 import {
@@ -16,8 +16,23 @@ import {
   RankBadge, SectionTitle, Skeleton, StatTile,
 } from '@/components/ui'
 import { CountUp, FadeIn, Stagger, StaggerItem } from '@/components/motion'
+import { PublicNavbar } from '@/components/layout/PublicNavbar'
 import { points, shortDate } from '@/lib/format'
 import type { PublicPageData, PublicSessionData } from '@/types'
+
+/**
+ * "Back" here isn't always the team page — a player might have arrived from
+ * the global leaderboard, a WhatsApp link, or the team page itself. Prefer
+ * actual browser history when this tab has any (so it returns to wherever
+ * the visitor really came from); only fall back to the team page when there
+ * is nothing to go back to (a fresh tab, a shared link opened directly).
+ */
+function useSmartBack(fallback: string) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const canGoBack = location.key !== 'default'
+  return () => (canGoBack ? navigate(-1) : navigate(fallback))
+}
 
 const LIVE_EVENT_LABEL: Record<string, string> = {
   goal: 'Goal', own_goal: 'Own goal', assist: 'Assist',
@@ -77,6 +92,7 @@ export function PublicPageScreen() {
 
   return (
     <div className="min-h-dvh pb-24">
+      <PublicNavbar />
       {/* Hero */}
       <FadeIn>
         <header className="pitch-lines px-5 pb-8 pt-10 text-center">
@@ -415,6 +431,7 @@ interface PublicPlayerData {
 
 export function PublicPlayerScreen() {
   const { slug, playerId } = useParams<{ slug: string; playerId: string }>()
+  const goBack = useSmartBack(`/t/${slug}`)
 
   const { data, isLoading } = useQuery({
     queryKey: ['public-player', slug, playerId],
@@ -436,10 +453,11 @@ export function PublicPlayerScreen() {
 
   return (
     <div className="min-h-dvh pb-10">
+      <PublicNavbar />
       <div className="px-5 pt-5">
-        <Link to={`/t/${slug}`} className="text-[14px] text-chalk-muted">
+        <button onClick={goBack} className="text-[14px] text-chalk-muted">
           ← {data.organization.name}
-        </Link>
+        </button>
       </div>
 
       <FadeIn className="pitch-lines px-5 pb-8 pt-6 text-center">
@@ -480,28 +498,43 @@ export function PublicPlayerScreen() {
           </Card>
         )}
 
-        {/* Full stat table — every number the season has on this player */}
+        {/* Full stats, grouped by category — a stats-centre layout rather than
+            one long flat list, so a glance tells you what kind of player
+            this is (attack vs. defence vs. discipline). */}
         {data.stats && (
           <section className="mt-7">
             <SectionTitle>Full stats — {data.period.label}</SectionTitle>
-            <Card className="divide-y divide-pitch-700 p-0">
-              <StatRow label="Goals" value={data.stats.goals} />
-              <StatRow label="Assists" value={data.stats.assists} />
-              <StatRow label="Own goals" value={data.stats.own_goals} />
-              <StatRow label="Appearances" value={data.stats.appearances} />
-              <StatRow label="Clean sheets" value={data.stats.clean_sheets} />
-              {data.stats.saves > 0 && <StatRow label="Saves" value={data.stats.saves} />}
-              {data.stats.yellow_cards !== undefined && (
-                <StatRow label="Yellow cards" value={data.stats.yellow_cards} />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <StatGroup title="Attack">
+                <StatRow label="Goals" value={data.stats.goals} />
+                <StatRow label="Assists" value={data.stats.assists} />
+                <StatRow label="Own goals" value={data.stats.own_goals} />
+              </StatGroup>
+
+              <StatGroup title="Playing time">
+                <StatRow label="Appearances" value={data.stats.appearances} />
+                <StatRow label="Clean sheets" value={data.stats.clean_sheets} />
+                {data.stats.saves > 0 && <StatRow label="Saves" value={data.stats.saves} />}
+              </StatGroup>
+
+              {(data.stats.yellow_cards !== undefined || data.stats.red_cards !== undefined) && (
+                <StatGroup title="Discipline">
+                  {data.stats.yellow_cards !== undefined && (
+                    <StatRow label="Yellow cards" value={data.stats.yellow_cards} />
+                  )}
+                  {data.stats.red_cards !== undefined && (
+                    <StatRow label="Red cards" value={data.stats.red_cards} />
+                  )}
+                </StatGroup>
               )}
-              {data.stats.red_cards !== undefined && (
-                <StatRow label="Red cards" value={data.stats.red_cards} />
-              )}
-              {data.stats.punctuality_score !== undefined && (
-                <StatRow label="Punctuality" value={points(data.stats.punctuality_score)} />
-              )}
-              <StatRow label="Total points" value={points(data.stats.total_points)} accent />
-            </Card>
+
+              <StatGroup title="Overall">
+                {data.stats.punctuality_score !== undefined && (
+                  <StatRow label="Punctuality" value={points(data.stats.punctuality_score)} />
+                )}
+                <StatRow label="Total points" value={points(data.stats.total_points)} accent />
+              </StatGroup>
+            </div>
           </section>
         )}
 
@@ -576,6 +609,17 @@ export function PublicPlayerScreen() {
         )}
       </div>
     </div>
+  )
+}
+
+function StatGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Card className="p-0">
+      <div className="border-b border-pitch-700 px-3.5 py-2.5 text-[11px] uppercase tracking-wider text-chalk-muted">
+        {title}
+      </div>
+      <div className="divide-y divide-pitch-700">{children}</div>
+    </Card>
   )
 }
 
@@ -827,6 +871,7 @@ function useLiveClock(startedAt: string | null | undefined, running: boolean) {
 
 export function PublicLiveSessionScreen() {
   const { slug, sessionId } = useParams<{ slug: string; sessionId: string }>()
+  const goBack = useSmartBack(`/t/${slug}`)
 
   const { data, isLoading } = useQuery({
     queryKey: ['public-live-session', slug, sessionId],
@@ -877,10 +922,11 @@ export function PublicLiveSessionScreen() {
 
   return (
     <div className="min-h-dvh pb-10">
+      <PublicNavbar />
       <div className="px-5 pt-5">
-        <Link to={`/t/${slug}`} className="text-[14px] text-chalk-muted">
+        <button onClick={goBack} className="text-[14px] text-chalk-muted">
           ← {data.organization.name}
-        </Link>
+        </button>
       </div>
 
       <FadeIn className="px-5 pb-6 pt-6 text-center">

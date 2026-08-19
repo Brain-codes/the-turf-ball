@@ -12,9 +12,12 @@
 import { createRouter } from '../_shared/router.ts'
 import { getPublicPage, getPublicPlayer, getPublicSession } from './handlers/publicPage.ts'
 import { joinTeam } from './handlers/publicJoin.ts'
+import { getGlobalPlayers, getGlobalTeams } from './handlers/globalLeaderboard.ts'
 
 Deno.serve(createRouter('public', {
   GET: {
+    'leaderboard/players': getGlobalPlayers,
+    'leaderboard/teams': getGlobalTeams,
     ':slug': getPublicPage,
     ':slug/player/:playerId': getPublicPlayer,
     ':slug/session/:sessionId': getPublicSession,

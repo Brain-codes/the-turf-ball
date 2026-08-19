@@ -363,6 +363,14 @@ export function ShareSettings() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organization'] }),
   })
 
+  // Separate from the share-page toggle above: this controls whether the team
+  // appears in the cross-team global leaderboard at /leaderboard, not whether
+  // their own /t/:slug page is reachable.
+  const saveOrg = useMutation({
+    mutationFn: async (patch: object) => api.patch(`organizations/${activeOrg!.id}`, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organization'] }),
+  })
+
   if (isLoading || !org?.public_page) return <Skeleton className="h-64" />
 
   const page = org.public_page
@@ -429,6 +437,18 @@ export function ShareSettings() {
             label="Session results"
             checked={page.show_sessions}
             onChange={(v) => save.mutate({ show_sessions: v })}
+          />
+        </Card>
+      </div>
+
+      <div>
+        <SectionTitle>The Turf Ball table</SectionTitle>
+        <Card className="py-0">
+          <Toggle
+            label="List my team publicly"
+            description="Show up in the global players and teams table at /leaderboard"
+            checked={org.is_public}
+            onChange={(v) => saveOrg.mutate({ is_public: v })}
           />
         </Card>
       </div>

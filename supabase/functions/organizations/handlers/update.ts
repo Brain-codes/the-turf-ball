@@ -2,14 +2,14 @@ import type { Ctx } from '../../_shared/router.ts'
 import { successResponse } from '../../_shared/response.ts'
 import { requireMember } from '../../_shared/auth.ts'
 import { conflict } from '../../_shared/errors.ts'
-import { int, oneOf, str, validate } from '../../_shared/validation.ts'
+import { bool, int, oneOf, str, validate } from '../../_shared/validation.ts'
 import { audit } from '../../_shared/helpers.ts'
 
 const FORMATS = ['5aside', '7aside', '11aside', 'custom'] as const
 const FIELDS = [
   'name', 'short_name', 'description', 'location', 'venue',
   'format', 'players_per_side', 'playing_days', 'default_kickoff',
-  'timezone', 'logo_url',
+  'timezone', 'logo_url', 'is_public',
 ] as const
 
 export async function updateOrganization(ctx: Ctx): Promise<Response> {
@@ -23,6 +23,7 @@ export async function updateOrganization(ctx: Ctx): Promise<Response> {
     description: [str(0, 500)],
     format: [oneOf(FORMATS)],
     players_per_side: [int(3, 11)],
+    is_public: [bool],
   })
 
   const patch: Record<string, unknown> = {}
