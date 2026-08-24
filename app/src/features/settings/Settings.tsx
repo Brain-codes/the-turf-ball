@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type SVGProps } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { RiArrowDownSLine } from '@remixicon/react'
 import { api, ApiError } from '@/services/client'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
@@ -10,20 +11,93 @@ import {
 } from '@/components/ui'
 import { FadeIn } from '@/components/motion'
 import { cn } from '@/lib/cn'
-import type { DeleteAccountPreview, MemberRow, Organization, OrgSettings, ScoringPreset, ScoringRule } from '@/types'
+import type { Competition, DeleteAccountPreview, MemberRow, Organization, OrgSettings, ScoringPreset, ScoringRule } from '@/types'
+
+function IconGroup(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M17 20.5v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 5 19v1.5" />
+      <circle cx="9.5" cy="8" r="3.25" />
+      <path d="M15.5 15.5a3 3 0 0 0 3-3v-.25a3 3 0 0 0-2-2.83" />
+    </svg>
+  )
+}
+function IconCalendar(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="4" y="5.5" width="16" height="15" rx="2" />
+      <path d="M4 10h16M8.5 3.5v3M15.5 3.5v3" />
+    </svg>
+  )
+}
+function IconBall(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M12 8.2 15.2 10.5l-1.2 3.75H9.9l-1.2-3.75L12 8.2Z" />
+      <path d="M12 8.2V4.5M15.2 10.5l3.4-1.1M13.9 14.25l2.1 3M8 14.25l-2.1 3M8.8 10.5 5.4 9.4" />
+    </svg>
+  )
+}
+function IconStar(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 3.5l2.55 5.17 5.7.83-4.13 4.02.97 5.68L12 16.4l-5.1 2.68.98-5.68-4.13-4.02 5.7-.83L12 3.5Z" />
+    </svg>
+  )
+}
+function IconTrophy(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M7 4.5h10v4a5 5 0 0 1-5 5 5 5 0 0 1-5-5v-4Z" />
+      <path d="M7 5.5H4.5a2 2 0 0 0 2 2H7M17 5.5h2.5a2 2 0 0 1-2 2H17M12 13.5v3M9 20h6M9.5 20v-2.5a2.5 2.5 0 0 1 5 0V20" />
+    </svg>
+  )
+}
+function IconShare(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="18" cy="5.5" r="2.25" />
+      <circle cx="6" cy="12" r="2.25" />
+      <circle cx="18" cy="18.5" r="2.25" />
+      <path d="m8 10.8 8-4.4M8 13.2l8 4.4" />
+    </svg>
+  )
+}
+function IconUsers(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="8.5" cy="8" r="3" />
+      <path d="M2.75 19.5c.5-3 2.9-5 5.75-5s5.25 2 5.75 5" />
+      <path d="M15.5 6.2a2.75 2.75 0 0 1 0 5.35M17.5 14.75c2.4.35 4.15 2.1 4.75 4.75" />
+    </svg>
+  )
+}
+function IconUser(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M4.75 19.5c.75-3.75 3.5-6 7.25-6s6.5 2.25 7.25 6" />
+    </svg>
+  )
+}
 
 const TABS = [
-  { to: '/app/settings/general', label: 'Group' },
-  { to: '/app/settings/schedule', label: 'Schedule' },
-  { to: '/app/settings/football', label: 'Football' },
-  { to: '/app/settings/scoring', label: 'Points' },
-  { to: '/app/settings/share', label: 'Share page' },
-  { to: '/app/settings/members', label: 'People' },
-  { to: '/app/settings/account', label: 'Account' },
+  { to: '/app/settings/general', label: 'Group', hint: 'Name, venue, description', icon: IconGroup },
+  { to: '/app/settings/schedule', label: 'Schedule', hint: 'Sessions & recurrence', icon: IconCalendar },
+  { to: '/app/settings/football', label: 'Football', hint: 'Rules & tracking', icon: IconBall },
+  { to: '/app/settings/scoring', label: 'Points', hint: 'Scoring & presets', icon: IconStar },
+  { to: '/app/settings/competitions', label: 'Competitions', hint: 'What counts to stats', icon: IconTrophy },
+  { to: '/app/settings/share', label: 'Share page', hint: 'Public link & visibility', icon: IconShare },
+  { to: '/app/settings/members', label: 'People', hint: 'Invites & access', icon: IconUsers },
+  { to: '/app/settings/account', label: 'Account', hint: 'Your login', icon: IconUser },
 ]
 
 export function SettingsLayout() {
   const { signOut } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const currentTab = TABS.find((t) => location.pathname.startsWith(t.to)) ?? TABS[0]
 
   return (
     <div className="pb-8">
@@ -36,27 +110,65 @@ export function SettingsLayout() {
         }
       />
 
-      <div className="mb-5 flex gap-2 overflow-x-auto px-5 pb-1">
-        {TABS.map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            className={({ isActive }) =>
-              cn(
-                'shrink-0 rounded-full px-3.5 py-1.5 text-[13.5px] transition-colors',
-                isActive
-                  ? 'bg-volt-400 font-semibold text-void'
-                  : 'bg-pitch-800 text-chalk-muted hover:text-chalk',
-              )
-            }
+      {/* Mobile: current section picker — a scrolling pill row hides options
+          off-screen with no affordance, so this surfaces all 8 sections in
+          one dropdown instead. */}
+      <div className="mb-5 px-5 md:hidden">
+        <label className="relative block">
+          <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-volt-400">
+            <currentTab.icon className="h-[18px] w-[18px]" />
+          </span>
+          <select
+            value={currentTab.to}
+            onChange={(e) => navigate(e.target.value)}
+            className="h-12 w-full appearance-none rounded-xl border border-pitch-700 bg-pitch-900 pl-11 pr-10 text-[15px] font-semibold text-chalk focus:border-turf-400 focus:outline-none"
           >
-            {tab.label}
-          </NavLink>
-        ))}
+            {TABS.map((tab) => (
+              <option key={tab.to} value={tab.to}>{tab.label}</option>
+            ))}
+          </select>
+          <span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-chalk-faint">
+            <RiArrowDownSLine className="h-5 w-5" />
+          </span>
+        </label>
       </div>
 
-      <div className="px-5">
-        <Outlet />
+      {/* Desktop: settings sub-nav + content panel */}
+      <div className="px-5 md:grid md:grid-cols-[236px_minmax(0,1fr)] md:items-start md:gap-8">
+        <nav className="hidden md:sticky md:top-6 md:block md:space-y-0.5">
+          {TABS.map((tab) => (
+            <NavLink
+              key={tab.to}
+              to={tab.to}
+              className={({ isActive }) =>
+                cn(
+                  'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] transition-colors',
+                  isActive
+                    ? 'bg-pitch-800 font-semibold text-chalk'
+                    : 'text-chalk-muted hover:bg-pitch-800/60 hover:text-chalk',
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <tab.icon
+                    className={cn(
+                      'h-[18px] w-[18px] shrink-0 transition-colors',
+                      isActive ? 'text-volt-400' : 'text-chalk-faint group-hover:text-chalk-muted',
+                    )}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate">{tab.label}</span>
+                  </span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="min-w-0 md:pt-1">
+          <Outlet />
+        </div>
       </div>
     </div>
   )
@@ -211,6 +323,38 @@ export function FootballSettings() {
         </Card>
       </div>
 
+      <div>
+        <SectionTitle>Closing the month</SectionTitle>
+        <Card className="divide-y divide-pitch-700 py-0">
+          <Toggle
+            label="Close months automatically"
+            description="The month locks itself and crowns a winner once it's over"
+            checked={settings.auto_close_months}
+            onChange={(v) => update('auto_close_months', v)}
+          />
+        </Card>
+        {settings.auto_close_months && (
+          <Card className="mt-3 space-y-3">
+            <Field
+              label="Days to wait after the month ends"
+              hint="Time to key in anything recorded on paper. 1 means the month closes on the 2nd."
+            >
+              <Input
+                type="number"
+                min={0}
+                max={14}
+                value={settings.auto_close_grace_days}
+                onChange={(e) => update('auto_close_grace_days', Number(e.target.value))}
+              />
+            </Field>
+            <p className="text-[13px] leading-relaxed text-chalk-muted">
+              An unfinished session holds the month open — finish it and the month closes on the
+              next check.
+            </p>
+          </Card>
+        )}
+      </div>
+
       {settings.track_punctuality && (
         <div>
           <SectionTitle>Punctuality windows</SectionTitle>
@@ -237,6 +381,59 @@ export function FootballSettings() {
           </Card>
         </div>
       )}
+    </FadeIn>
+  )
+}
+
+export function CompetitionSettings() {
+  const { activeOrg } = useAuth()
+  const queryClient = useQueryClient()
+
+  const { data: competitions, isLoading } = useQuery({
+    queryKey: ['competitions', activeOrg?.id, 'all'],
+    queryFn: async () => (await api.get<Competition[]>('competitions')).data,
+    enabled: !!activeOrg,
+  })
+
+  const toggle = useMutation({
+    mutationFn: async ({ id, count_toward_stats }: { id: string; count_toward_stats: boolean }) =>
+      api.patch(`competitions/${id}/stats-toggle`, { count_toward_stats }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['competitions'] }),
+  })
+
+  if (isLoading) return <Skeleton className="h-48" />
+
+  const list = competitions ?? []
+
+  return (
+    <FadeIn className="space-y-6">
+      <div>
+        <SectionTitle>Count towards the table</SectionTitle>
+        <Card className="mb-3">
+          <p className="text-[13px] leading-relaxed text-chalk-muted">
+            Goals and assists from a competition count towards a player's normal totals by
+            default. Nothing is ever deleted — turning a competition off here just leaves it out
+            of the sums, and turning it back on brings the numbers straight back.
+          </p>
+        </Card>
+        {list.length === 0 ? (
+          <Card>
+            <p className="text-[13px] text-chalk-muted">No competitions yet.</p>
+          </Card>
+        ) : (
+          <Card className="divide-y divide-pitch-700 py-0">
+            {list.map((c) => (
+              <Toggle
+                key={c.id}
+                label={c.name}
+                description={c.status === 'completed' ? 'Completed' : c.status === 'live' ? 'Live now' : 'Upcoming'}
+                checked={c.count_toward_stats}
+                onChange={(v) => toggle.mutate({ id: c.id, count_toward_stats: v })}
+              />
+            ))}
+          </Card>
+        )}
+      </div>
     </FadeIn>
   )
 }

@@ -19,7 +19,7 @@ export async function listPlayers(ctx: Ctx): Promise<Response> {
   // show up in the default squad list, only when someone explicitly asks
   // for status=pending (the admin approval queue).
   if (status) q = q.eq('status', status)
-  else q = q.not('status', 'in', '(inactive,pending)')
+  else q = q.not('status', 'in', '(inactive,pending,merged)')
 
   if (search) q = q.ilike('display_name', `%${search}%`)
 

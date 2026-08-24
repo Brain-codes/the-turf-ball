@@ -10,6 +10,7 @@ const FIELDS = [
   'clean_sheet_policy', 'track_punctuality', 'track_cards', 'track_clean_sheets',
   'guests_on_leaderboard', 'early_before_mins', 'on_time_after_mins', 'late_after_mins',
   'early_points', 'on_time_points', 'late_points', 'very_late_points', 'voting_enabled',
+  'auto_close_months', 'auto_close_grace_days',
 ] as const
 
 export async function getSettings(ctx: Ctx): Promise<Response> {
@@ -30,6 +31,8 @@ export async function updateSettings(ctx: Ctx): Promise<Response> {
     early_before_mins: [num(0, 240)],
     on_time_after_mins: [num(0, 240)],
     late_after_mins: [num(0, 240)],
+    auto_close_months: [bool],
+    auto_close_grace_days: [num(0, 14)],
   })
 
   await orgSettings(ctx.db, member.organizationId) // ensure the row exists

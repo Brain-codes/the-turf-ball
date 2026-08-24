@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/services/client'
@@ -11,6 +11,7 @@ import {
 import { FadeIn, Sheet, Stagger, StaggerItem } from '@/components/motion'
 import { POSITION_LABEL, points, shortDate } from '@/lib/format'
 import { compressImage } from '@/lib/file'
+import { findLikelyDuplicates } from '@/lib/similarity'
 import type { Award, Player, PlayerStats } from '@/types'
 
 /* -------------------------------------------------------------------------- */
@@ -22,6 +23,11 @@ export function PlayersScreen() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [addOpen, setAddOpen] = useState(false)
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergePair, setMergePair] = useState<{ keep: Player; duplicate: Player } | null>(null)
+  const [mergeDuplicatePreset, setMergeDuplicatePreset] = useState<Player | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set())
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['players', activeOrg?.id],
@@ -53,13 +59,103 @@ export function PlayersScreen() {
     p.display_name.toLowerCase().includes(search.trim().toLowerCase()),
   )
 
+  const joinLink = activeOrg ? `${window.location.origin}/play/${activeOrg.slug}` : null
+
+  // Self-serve joins mean the same person can end up submitting twice under
+  // a slightly different spelling — flag near-identical names so the
+  // organizer can review and merge instead of noticing by accident. This
+  // checks both within the active squad AND a pending resubmission against
+  // someone already in the squad — that second case is the common one: they
+  // forget they already joined and fill the link in again.
+  const duplicateSuggestions = useMemo(
+    () =>
+      findLikelyDuplicates([...(data ?? []), ...(pending ?? [])], (p) => p.display_name).filter(
+        ([a, b]) => !dismissedSuggestions.has([a.id, b.id].sort().join(':')),
+      ),
+    [data, pending, dismissedSuggestions],
+  )
+
+  /** A pending resubmission is always the duplicate; otherwise the older signup is kept. */
+  function orderKeepDuplicate(a: Player, b: Player): [Player, Player] {
+    if (a.status === 'pending' && b.status !== 'pending') return [b, a]
+    if (b.status === 'pending' && a.status !== 'pending') return [a, b]
+    return new Date(a.joined_at) <= new Date(b.joined_at) ? [a, b] : [b, a]
+  }
+
   return (
     <div className="pb-8">
       <PageHeader
         title="Squad"
         subtitle={data ? `${data.length} player${data.length === 1 ? '' : 's'}` : undefined}
-        action={<Button onClick={() => setAddOpen(true)}>Add</Button>}
+        action={
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setMergeOpen(true)}>
+              Merge
+            </Button>
+            <Button onClick={() => setAddOpen(true)}>Add</Button>
+          </div>
+        }
       />
+
+      {joinLink && (
+        <div className="px-5 pb-4">
+          <div className="flex items-center gap-2 rounded-xl border border-pitch-700 bg-pitch-900 py-2 pl-3 pr-1.5">
+            <span className="shrink-0 text-[12px] font-medium text-chalk-faint">Squad link</span>
+            <p className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-volt-400">{joinLink}</p>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                navigator.clipboard.writeText(joinLink)
+                setLinkCopied(true)
+                setTimeout(() => setLinkCopied(false), 2000)
+              }}
+            >
+              {linkCopied ? 'Copied' : 'Copy'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {duplicateSuggestions.length > 0 && (
+        <div className="px-5 pb-5">
+          <SectionTitle>Possible duplicates ({duplicateSuggestions.length})</SectionTitle>
+          <Card className="mt-2 divide-y divide-pitch-700 !p-0">
+            {duplicateSuggestions.map(([a, b]) => {
+              const key = [a.id, b.id].sort().join(':')
+              return (
+                <div key={key} className="flex items-center gap-3 px-3.5 py-3">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <PlayerAvatar name={a.display_name} photoUrl={a.photo_url} size="sm" />
+                    <span className="truncate text-[13.5px] text-chalk">{a.display_name}</span>
+                    {a.status === 'pending' && <Badge tone="warn">Pending</Badge>}
+                    <span className="text-chalk-faint">/</span>
+                    <PlayerAvatar name={b.display_name} photoUrl={b.photo_url} size="sm" />
+                    <span className="truncate text-[13.5px] text-chalk">{b.display_name}</span>
+                    {b.status === 'pending' && <Badge tone="warn">Pending</Badge>}
+                  </div>
+                  <button
+                    onClick={() => setDismissedSuggestions((prev) => new Set(prev).add(key))}
+                    className="shrink-0 text-[12.5px] text-chalk-muted"
+                  >
+                    Not a duplicate
+                  </button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const [keep, duplicate] = orderKeepDuplicate(a, b)
+                      setMergePair({ keep, duplicate })
+                      setMergeOpen(true)
+                    }}
+                  >
+                    Review
+                  </Button>
+                </div>
+              )
+            })}
+          </Card>
+        </div>
+      )}
 
       {pending && pending.length > 0 && (
         <div className="px-5 pb-5">
@@ -90,6 +186,12 @@ export function PlayersScreen() {
                 >
                   Approve
                 </Button>
+                <button
+                  onClick={() => { setMergeDuplicatePreset(p); setMergeOpen(true) }}
+                  className="shrink-0 text-[12.5px] text-chalk-muted"
+                >
+                  Already in squad?
+                </button>
               </div>
             ))}
           </Card>
@@ -167,7 +269,367 @@ export function PlayersScreen() {
           setAddOpen(false)
         }}
       />
+
+      <MergePlayersSheet
+        open={mergeOpen}
+        players={[...(data ?? []), ...(pending ?? [])]}
+        initialPair={mergePair}
+        presetDuplicate={mergeDuplicatePreset}
+        onClose={() => { setMergeOpen(false); setMergePair(null); setMergeDuplicatePreset(null) }}
+        onDone={() => {
+          queryClient.invalidateQueries({ queryKey: ['players'] })
+          queryClient.invalidateQueries({ queryKey: ['players-pending'] })
+          setMergeOpen(false)
+          setMergePair(null)
+          setMergeDuplicatePreset(null)
+        }}
+      />
     </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Merge duplicates — pick the profile to keep, the duplicate to fold in, and */
+/* which categories of history move over. Whatever's left unchecked stays on */
+/* the duplicate, which is archived rather than deleted.                     */
+/* -------------------------------------------------------------------------- */
+
+const MERGE_CATEGORIES = [
+  { value: 'goal', label: 'Goals' },
+  { value: 'assist', label: 'Assists' },
+  { value: 'own_goal', label: 'Own goals' },
+  { value: 'yellow_card', label: 'Yellow cards' },
+  { value: 'red_card', label: 'Red cards' },
+  { value: 'attendance', label: 'Attendance / appearances' },
+] as const
+
+/** Profile fields worth reconciling when two rows for the same person differ. */
+const MERGE_FIELDS = [
+  { key: 'display_name', label: 'Name' },
+  { key: 'jersey_number', label: 'Shirt number' },
+  { key: 'position', label: 'Position' },
+  { key: 'preferred_foot', label: 'Preferred foot' },
+  { key: 'whatsapp_nickname', label: 'WhatsApp nickname' },
+  { key: 'photo_url', label: 'Photo' },
+] as const
+type MergeFieldKey = (typeof MERGE_FIELDS)[number]['key']
+
+function fieldDisplay(p: Player, key: MergeFieldKey): string {
+  const v = p[key]
+  if (key === 'jersey_number') return v !== null && v !== undefined ? `#${v}` : 'No number'
+  if (key === 'position') return v ? POSITION_LABEL[v as keyof typeof POSITION_LABEL] : 'Not set'
+  if (key === 'preferred_foot') return v ? `${(v as string)[0].toUpperCase()}${(v as string).slice(1)}` : 'Not set'
+  if (key === 'photo_url') return v ? 'Has a photo' : 'No photo'
+  return (v as string | null) || 'Not set'
+}
+
+function MergePlayersSheet({
+  open,
+  players,
+  initialPair,
+  presetDuplicate,
+  onClose,
+  onDone,
+}: {
+  open: boolean
+  players: Player[]
+  initialPair?: { keep: Player; duplicate: Player } | null
+  presetDuplicate?: Player | null
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [step, setStep] = useState<'keep' | 'duplicate' | 'fields' | 'categories'>('keep')
+  const [keep, setKeep] = useState<Player | null>(null)
+  const [duplicate, setDuplicate] = useState<Player | null>(null)
+  const [fieldChoices, setFieldChoices] = useState<Record<string, 'keep' | 'duplicate'>>({})
+  const [categories, setCategories] = useState<Set<string>>(
+    new Set(MERGE_CATEGORIES.map((c) => c.value)),
+  )
+  const [deleteDuplicate, setDeleteDuplicate] = useState(false)
+  const [search, setSearch] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function reset() {
+    setStep('keep')
+    setKeep(null)
+    setDuplicate(null)
+    setFieldChoices({})
+    setCategories(new Set(MERGE_CATEGORIES.map((c) => c.value)))
+    setDeleteDuplicate(false)
+    setSearch('')
+    setError(null)
+  }
+
+  // A suggestion from "possible duplicates" arrives with both players
+  // already picked — skip straight past the two search steps. "Already in
+  // squad?" on a pending row arrives with only the duplicate fixed — the
+  // organizer still needs to search for who they're the same person as.
+  useEffect(() => {
+    if (!open) return
+    if (initialPair) {
+      setKeep(initialPair.keep)
+      setDuplicate(initialPair.duplicate)
+      setFieldChoices({})
+      setStep('fields')
+    } else if (presetDuplicate) {
+      setDuplicate(presetDuplicate)
+      setKeep(null)
+      setFieldChoices({})
+      setStep('keep')
+    }
+  }, [open, initialPair, presetDuplicate])
+
+  // A pending signup has no attendance or events yet (they can't exist
+  // before approval), so there's nothing to move — skip the category
+  // checklist and just fold it in, then remove it from the queue.
+  const duplicateIsPending = duplicate?.status === 'pending'
+
+  useEffect(() => {
+    if (!duplicate) return
+    if (duplicateIsPending) {
+      setCategories(new Set())
+      setDeleteDuplicate(true)
+    } else {
+      setCategories(new Set(MERGE_CATEGORIES.map((c) => c.value)))
+      setDeleteDuplicate(false)
+    }
+  }, [duplicateIsPending, duplicate?.id])
+
+  const diffFields = useMemo(() => {
+    if (!keep || !duplicate) return []
+    return MERGE_FIELDS.filter((f) => fieldDisplay(keep, f.key) !== fieldDisplay(duplicate, f.key))
+  }, [keep, duplicate])
+
+  const merge = useMutation({
+    mutationFn: async () => {
+      if (!keep || !duplicate) return
+      const field_overrides: Record<string, unknown> = {}
+      for (const f of diffFields) {
+        if (fieldChoices[f.key] === 'duplicate') field_overrides[f.key] = duplicate[f.key]
+      }
+      await api.post(`players/${keep.id}/merge`, {
+        duplicate_player_id: duplicate.id,
+        categories: Array.from(categories),
+        delete_duplicate: deleteDuplicate,
+        field_overrides,
+      })
+    },
+    onSuccess: () => {
+      reset()
+      onDone()
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not merge those players'),
+  })
+
+  function toggleCategory(value: string) {
+    setCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(value)) next.delete(value)
+      else next.add(value)
+      return next
+    })
+  }
+
+  function goToNextAfterDuplicate(k: Player, d: Player) {
+    const diffs = MERGE_FIELDS.filter((f) => fieldDisplay(k, f.key) !== fieldDisplay(d, f.key))
+    setStep(diffs.length > 0 ? 'fields' : 'categories')
+  }
+
+  const excludeIds = new Set([keep?.id, duplicate?.id].filter((id): id is string => !!id))
+  const candidates = players
+    .filter((p) => !excludeIds.has(p.id))
+    .filter((p) => p.display_name.toLowerCase().includes(search.trim().toLowerCase()))
+
+  return (
+    <Sheet
+      open={open}
+      onClose={() => { reset(); onClose() }}
+      title={
+        step === 'keep'
+          ? (duplicate ? `Who is ${duplicate.display_name} already in your squad as?` : 'Merge duplicates — keep which profile?')
+          : step === 'duplicate' ? `Merge into ${keep?.display_name} — which is the duplicate?`
+          : step === 'fields' ? 'Which details are right?'
+          : duplicateIsPending ? 'Remove the duplicate signup'
+          : 'What moves over?'
+      }
+    >
+      {step === 'fields' && keep && duplicate ? (
+        <>
+          <p className="mb-4 text-[14px] text-chalk-muted">
+            These profile details differ between the two — pick which one is correct.
+          </p>
+          <div className="mb-4 space-y-3">
+            {diffFields.map((f) => {
+              const choice = fieldChoices[f.key] ?? 'keep'
+              return (
+                <div key={f.key}>
+                  <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-wider text-chalk-faint">
+                    {f.label}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFieldChoices((prev) => ({ ...prev, [f.key]: 'keep' }))}
+                      className={`rounded-xl border px-3 py-2.5 text-left text-[13.5px] ${choice === 'keep' ? 'border-volt-400 bg-volt-400/10 text-chalk' : 'border-pitch-700 bg-pitch-900 text-chalk-muted'}`}
+                    >
+                      {fieldDisplay(keep, f.key)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFieldChoices((prev) => ({ ...prev, [f.key]: 'duplicate' }))}
+                      className={`rounded-xl border px-3 py-2.5 text-left text-[13.5px] ${choice === 'duplicate' ? 'border-volt-400 bg-volt-400/10 text-chalk' : 'border-pitch-700 bg-pitch-900 text-chalk-muted'}`}
+                    >
+                      {fieldDisplay(duplicate, f.key)}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" fullWidth onClick={() => setStep('duplicate')}>
+              Back
+            </Button>
+            <Button fullWidth onClick={() => setStep('categories')}>
+              Continue
+            </Button>
+          </div>
+        </>
+      ) : step === 'categories' && keep && duplicate && duplicateIsPending ? (
+        <>
+          <p className="mb-4 text-[14px] text-chalk-muted">
+            <span className="font-medium text-chalk">{duplicate.display_name}</span>'s pending
+            signup has no history yet — merging just applies the details you picked to{' '}
+            <span className="font-medium text-chalk">{keep.display_name}</span> and removes the
+            duplicate from your approval queue.
+          </p>
+          {error && <p className="mb-3 text-[14px] text-card-red">{error}</p>}
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              fullWidth
+              onClick={() => setStep(diffFields.length > 0 ? 'fields' : 'duplicate')}
+            >
+              Back
+            </Button>
+            <Button fullWidth loading={merge.isPending} onClick={() => merge.mutate()}>
+              Merge and remove
+            </Button>
+          </div>
+        </>
+      ) : step === 'categories' && keep && duplicate ? (
+        <>
+          <p className="mb-4 text-[14px] text-chalk-muted">
+            <span className="font-medium text-chalk">{duplicate.display_name}</span> merges into{' '}
+            <span className="font-medium text-chalk">{keep.display_name}</span>. Anything left
+            unchecked stays behind on {duplicate.display_name}'s profile instead of moving.
+          </p>
+          <div className="mb-4 space-y-2">
+            {MERGE_CATEGORIES.map((c) => {
+              const checked = categories.has(c.value)
+              return (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => toggleCategory(c.value)}
+                  className="flex w-full items-center gap-2.5 rounded-xl border border-pitch-700 bg-pitch-900 px-3.5 py-3 text-left"
+                >
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${checked ? 'border-volt-400 bg-volt-400 text-void' : 'border-pitch-600'}`}
+                  >
+                    {checked && '✓'}
+                  </span>
+                  <span className="text-[14px] text-chalk">{c.label}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setDeleteDuplicate((v) => !v)}
+            className="mb-2 flex w-full items-start gap-2.5 rounded-xl border border-pitch-700 bg-pitch-900 px-3.5 py-3 text-left"
+          >
+            <span
+              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${deleteDuplicate ? 'border-card-red bg-card-red text-void' : 'border-pitch-600'}`}
+            >
+              {deleteDuplicate && '✓'}
+            </span>
+            <span>
+              <span className="block text-[14px] text-chalk">
+                Delete {duplicate.display_name}'s profile — they're the same person
+              </span>
+              <span className="block text-[12.5px] text-chalk-muted">
+                {categories.size === MERGE_CATEGORIES.length
+                  ? 'Everything above is being moved, so nothing is lost by removing the empty duplicate.'
+                  : "Anything you left unchecked above is permanently deleted too — it won't stay behind."}
+              </span>
+            </span>
+          </button>
+
+          {error && <p className="mb-3 text-[14px] text-card-red">{error}</p>}
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              fullWidth
+              onClick={() => setStep(diffFields.length > 0 ? 'fields' : 'duplicate')}
+            >
+              Back
+            </Button>
+            <Button fullWidth loading={merge.isPending} onClick={() => merge.mutate()}>
+              {deleteDuplicate ? 'Merge and delete' : 'Merge'}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search players"
+            className="mb-3"
+            autoFocus
+          />
+          <div className="max-h-96 space-y-2 overflow-y-auto">
+            {candidates.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  if (step === 'keep') {
+                    setKeep(p)
+                    // A preset duplicate (from "Already in squad?" on a
+                    // pending row) is already fixed — go straight on rather
+                    // than asking who the duplicate is a second time.
+                    if (duplicate) goToNextAfterDuplicate(p, duplicate)
+                    else setStep('duplicate')
+                  } else if (keep) {
+                    setDuplicate(p)
+                    goToNextAfterDuplicate(keep, p)
+                  }
+                  setSearch('')
+                }}
+                className="tap-target flex w-full items-center gap-3 rounded-xl border border-pitch-700 bg-pitch-900 px-3.5 text-left"
+              >
+                <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
+                <PlayerName
+                  name={p.display_name}
+                  whatsappNickname={p.whatsapp_nickname}
+                  className="flex-1 text-[15px] text-chalk"
+                />
+              </button>
+            ))}
+            {candidates.length === 0 && (
+              <p className="py-4 text-center text-[13.5px] text-chalk-faint">No players match</p>
+            )}
+          </div>
+          {step === 'duplicate' && (
+            <Button variant="ghost" fullWidth className="mt-3" onClick={() => setStep('keep')}>
+              Back
+            </Button>
+          )}
+        </>
+      )}
+    </Sheet>
   )
 }
 

@@ -8,8 +8,10 @@ import {
   SectionTitle, Skeleton,
 } from '@/components/ui'
 import { FadeIn, Sheet, motion } from '@/components/motion'
-import { points } from '@/lib/format'
-import type { Award, Period, PlayerStats } from '@/types'
+import { fullDate, points } from '@/lib/format'
+import { cn } from '@/lib/cn'
+import { MonthReport } from './MonthReport'
+import type { Award, OrgSettings, Period, PlayerStats } from '@/types'
 
 interface AwardsData {
   period: Period
@@ -21,10 +23,20 @@ export function AwardsScreen() {
   const { activeOrg } = useAuth()
   const queryClient = useQueryClient()
   const [closeOpen, setCloseOpen] = useState(false)
+  const [tab, setTab] = useState<'awards' | 'report'>('awards')
+  // null = whichever month the API considers current.
+  const [monthId, setMonthId] = useState<string | null>(null)
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['awards', activeOrg?.id],
-    queryFn: async () => (await api.get<AwardsData>('awards')).data,
+    queryKey: ['awards', activeOrg?.id, monthId],
+    queryFn: async () =>
+      (await api.get<AwardsData>('awards', monthId ? { period_id: monthId } : undefined)).data,
+    enabled: !!activeOrg,
+  })
+
+  const { data: months } = useQuery({
+    queryKey: ['periods', activeOrg?.id],
+    queryFn: async () => (await api.get<Period[]>('periods')).data,
     enabled: !!activeOrg,
   })
 
@@ -54,6 +66,36 @@ export function AwardsScreen() {
     <div className="pb-8">
       <PageHeader title="Awards" subtitle={data.period.label} />
 
+      {(months?.length ?? 0) > 1 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto px-5 pb-1">
+          {(months ?? []).map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setMonthId(m.id)}
+              className={cn(
+                'shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+                m.id === data.period.id
+                  ? 'bg-volt-400 text-void'
+                  : 'bg-pitch-800 text-chalk-muted hover:text-chalk',
+              )}
+            >
+              {m.label}
+              {m.status === 'open' ? ' · live' : ''}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mb-4 flex gap-2 px-5">
+        <TopTab active={tab === 'awards'} onClick={() => setTab('awards')}>Awards</TopTab>
+        <TopTab active={tab === 'report'} onClick={() => setTab('report')}>Full breakdown</TopTab>
+      </div>
+
+      {tab === 'report' ? (
+        <div className="px-5">
+          <MonthReport periodId={data.period.id} />
+        </div>
+      ) : (
       <div className="px-5">
         {isOpen ? (
           data.provisional_leader ? (
@@ -91,18 +133,7 @@ export function AwardsScreen() {
                 <div className="text-[11px] uppercase tracking-wider text-chalk-muted">points</div>
               </div>
 
-              {canClose && (
-                <Card className="mt-4">
-                  <h3 className="text-[16px]">Finished this month?</h3>
-                  <p className="mt-1 text-[13.5px] leading-relaxed text-chalk-muted">
-                    Closing {data.period.label} locks in the results and crowns your Player of the
-                    Month. Nothing recorded after that will change it.
-                  </p>
-                  <Button className="mt-4" onClick={() => setCloseOpen(true)}>
-                    Close {data.period.label}
-                  </Button>
-                </Card>
-              )}
+              <AutoCloseNotice period={data.period} canClose={canClose} onCloseNow={() => setCloseOpen(true)} />
             </FadeIn>
           ) : (
             <EmptyState
@@ -168,6 +199,7 @@ export function AwardsScreen() {
           </section>
         )}
       </div>
+      )}
 
       <ClosePeriodSheet
         open={closeOpen}
@@ -180,6 +212,83 @@ export function AwardsScreen() {
         }}
       />
     </div>
+  )
+}
+
+function TopTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex-1 rounded-full px-4 py-2 text-[14px] font-medium transition-colors',
+        active ? 'bg-volt-400 text-void' : 'border border-pitch-700 text-chalk-muted hover:text-chalk',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * The month closes itself. This says when, so nobody is left wondering whether
+ * they were supposed to press something — and gives an organizer who is
+ * finished early the button to do it now anyway.
+ */
+function AutoCloseNotice({
+  period,
+  canClose,
+  onCloseNow,
+}: {
+  period: Period
+  canClose: boolean
+  onCloseNow: () => void
+}) {
+  const { activeOrg } = useAuth()
+
+  const { data: settings } = useQuery({
+    queryKey: ['org-settings', activeOrg?.id],
+    queryFn: async () => (await api.get<OrgSettings>(`organizations/${activeOrg!.id}/settings`)).data,
+    enabled: !!activeOrg,
+  })
+
+  // The day after the month ends, plus the grace window the organizer set.
+  const closesOn = new Date(period.year, period.month, 1 + (settings?.auto_close_grace_days ?? 1))
+  const auto = settings?.auto_close_months !== false
+  const blocked = period.auto_close_blocked_reason
+
+  return (
+    <Card className="mt-4">
+      <h3 className="text-[16px]">{auto ? 'This month closes itself' : 'Finished this month?'}</h3>
+      <p className="mt-1 text-[13.5px] leading-relaxed text-chalk-muted">
+        {auto ? (
+          <>
+            {period.label} locks in on {fullDate(closesOn)} and crowns your Player of the Month
+            automatically. Nothing recorded after that will change it.
+          </>
+        ) : (
+          <>
+            Automatic closing is off, so {period.label} stays open until you close it. Closing locks
+            in the results and crowns your Player of the Month.
+          </>
+        )}
+      </p>
+      {blocked && (
+        <p className="mt-2.5 text-[13.5px] leading-relaxed text-card-yellow">{blocked}</p>
+      )}
+      {canClose && (
+        <Button className="mt-4" variant={auto ? 'secondary' : 'primary'} onClick={onCloseNow}>
+          {auto ? `Close ${period.label} now` : `Close ${period.label}`}
+        </Button>
+      )}
+    </Card>
   )
 }
 

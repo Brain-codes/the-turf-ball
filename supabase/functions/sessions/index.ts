@@ -5,7 +5,7 @@ import { listSessions } from './handlers/list.ts'
 import { createSession } from './handlers/create.ts'
 import { getSession } from './handlers/get.ts'
 import { updateSession } from './handlers/update.ts'
-import { setAttendance, startSession, completeSession, keepAlive } from './handlers/attendance.ts'
+import { setAttendance, startSession, completeSession, keepAlive, resumeSession } from './handlers/attendance.ts'
 import { approveSession } from './handlers/approve.ts'
 
 Deno.serve(createRouter('sessions', {
@@ -19,6 +19,7 @@ Deno.serve(createRouter('sessions', {
     ':id/start': startSession,
     ':id/complete': completeSession,
     ':id/keep-alive': keepAlive,
+    ':id/resume': resumeSession,
     ':id/approve': approveSession,
   },
   PATCH: {

@@ -44,29 +44,47 @@ interface RecordBody {
 
 interface MatchContext {
   id: string
-  session_id: string
+  session_id: string | null
   period_id: string
+  competition_id: string | null
   status: string
   session_ended_at: string | null
 }
 
+/**
+ * A match is either session-born or competition-born (matches_session_or_
+ * competition check). Resolve period_id and an edit-window anchor from
+ * whichever side is present — competition matches have no session row, so
+ * `matches.ended_at` (the match's own timestamp) stands in for
+ * session.ended_at, and the period comes from the competition instead.
+ */
 async function loadMatch(ctx: Ctx, matchId: string, organizationId: string): Promise<MatchContext> {
   const { data } = await ctx.db
     .from('matches')
-    .select('id, status, sessions(id, period_id, ended_at)')
+    .select(`
+      id, status, ended_at,
+      sessions(id, period_id, ended_at),
+      competition_fixtures(competition_id, competitions(period_id))
+    `)
     .eq('id', matchId)
     .eq('organization_id', organizationId)
     .maybeSingle()
 
   if (!data) throw notFound('Match not found')
-  const session = data.sessions as unknown as { id: string; period_id: string; ended_at: string | null }
+  const session = data.sessions as unknown as { id: string; period_id: string; ended_at: string | null } | null
+  const fixture = data.competition_fixtures as unknown as
+    { competition_id: string; competitions: { period_id: string } | null } | null
+
+  const periodId = session?.period_id ?? fixture?.competitions?.period_id
+  if (!periodId) throw notFound('Match has no session or competition to record against')
 
   return {
     id: data.id,
-    session_id: session.id,
-    period_id: session.period_id,
+    session_id: session?.id ?? null,
+    period_id: periodId,
+    competition_id: fixture?.competition_id ?? null,
     status: data.status,
-    session_ended_at: session.ended_at,
+    session_ended_at: session?.ended_at ?? (data.ended_at as string | null),
   }
 }
 
@@ -118,6 +136,7 @@ export async function recordEvent(ctx: Ctx): Promise<Response> {
       match_id: match.id,
       session_id: match.session_id,
       period_id: match.period_id,
+      competition_id: match.competition_id,
       player_id: body.player_id,
       related_player_id: body.related_player_id ?? null,
       event_type: body.event_type,
@@ -143,6 +162,7 @@ export async function recordEvent(ctx: Ctx): Promise<Response> {
       match_id: match.id,
       session_id: match.session_id,
       period_id: match.period_id,
+      competition_id: match.competition_id,
       player_id: body.related_player_id,
       related_player_id: body.player_id,
       event_type: 'assist',
@@ -172,7 +192,7 @@ export async function recordEvent(ctx: Ctx): Promise<Response> {
     await refreshMatchScore(ctx.db, match.id)
   }
   await recomputeStats(ctx.db, match.period_id)
-  await touchSessionActivity(ctx.db, match.session_id)
+  if (match.session_id) await touchSessionActivity(ctx.db, match.session_id)
   await broadcast(ctx.db, member.organizationId, match.period_id, 'event.recorded', {
     match_id: match.id,
     event_type: body.event_type,
@@ -221,6 +241,7 @@ export async function recordBatch(ctx: Ctx): Promise<Response> {
         match_id: match.id,
         session_id: match.session_id,
         period_id: match.period_id,
+        competition_id: match.competition_id,
         player_id: entry.player_id,
         related_player_id: entry.related_player_id ?? null,
         event_type: entry.event_type,
@@ -239,6 +260,7 @@ export async function recordBatch(ctx: Ctx): Promise<Response> {
             match_id: match.id,
             session_id: match.session_id,
             period_id: match.period_id,
+            competition_id: match.competition_id,
             player_id: entry.related_player_id,
             related_player_id: entry.player_id,
             event_type: 'assist',

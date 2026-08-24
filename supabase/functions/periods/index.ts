@@ -2,14 +2,17 @@
 
 import { createRouter } from '../_shared/router.ts'
 import { listPeriods, previewClose, closePeriod, reopenPeriod } from './handlers/periods.ts'
+import { periodReport, rebuildReport } from './handlers/report.ts'
 
 Deno.serve(createRouter('periods', {
   GET: {
     '': listPeriods,
     ':id/preview-close': previewClose,
+    ':id/report': periodReport,
   },
   POST: {
     ':id/close': closePeriod,
     ':id/reopen': reopenPeriod,
+    ':id/report/rebuild': rebuildReport,
   },
 }))

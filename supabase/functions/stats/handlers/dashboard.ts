@@ -40,9 +40,14 @@ export async function dashboard(ctx: Ctx): Promise<Response> {
 
   const { data: liveSession } = await ctx.db
     .from('sessions')
-    .select('id, session_date, kickoff_at')
+    // Paused counts as "open" here on purpose: the dashboard is where an
+    // organizer finds out a session was paused for inactivity and decides
+    // whether to resume it or end it.
+    .select('id, session_date, kickoff_at, status, paused_at, paused_reason')
     .eq('organization_id', member.organizationId)
-    .eq('status', 'live')
+    .in('status', ['live', 'paused'])
+    .order('kickoff_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   const totals = played.reduce(

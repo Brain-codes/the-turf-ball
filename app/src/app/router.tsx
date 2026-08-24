@@ -32,6 +32,10 @@ const SessionsScreen = lazy(() => import('@/features/sessions/screens').then((m)
 const NewSessionScreen = lazy(() => import('@/features/sessions/screens').then((m) => ({ default: m.NewSessionScreen })))
 const SessionDetailScreen = lazy(() => import('@/features/sessions/screens').then((m) => ({ default: m.SessionDetailScreen })))
 const MatchDayScreen = lazy(() => import('@/features/matchday/MatchDay').then((m) => ({ default: m.MatchDayScreen })))
+const CompetitionsScreen = lazy(() => import('@/features/competitions/screens').then((m) => ({ default: m.CompetitionsScreen })))
+const NewCompetitionScreen = lazy(() => import('@/features/competitions/screens').then((m) => ({ default: m.NewCompetitionScreen })))
+const CompetitionDetailScreen = lazy(() => import('@/features/competitions/screens').then((m) => ({ default: m.CompetitionDetailScreen })))
+const CompetitionMatchDayScreen = lazy(() => import('@/features/competitions/CompetitionMatchDay').then((m) => ({ default: m.CompetitionMatchDayScreen })))
 const LeaderboardScreen = lazy(() => import('@/features/leaderboard/Leaderboard').then((m) => ({ default: m.LeaderboardScreen })))
 const AwardsScreen = lazy(() => import('@/features/awards/Awards').then((m) => ({ default: m.AwardsScreen })))
 const SettingsLayout = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.SettingsLayout })))
@@ -39,6 +43,7 @@ const ScheduleSettings = lazy(() => import('@/features/settings/Schedule').then(
 const GeneralSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.GeneralSettings })))
 const FootballSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.FootballSettings })))
 const ScoringSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.ScoringSettings })))
+const CompetitionSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.CompetitionSettings })))
 const ShareSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.ShareSettings })))
 const MembersSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.MembersSettings })))
 const AccountSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.AccountSettings })))
@@ -107,6 +112,7 @@ export function Router() {
 
       {/* Match day renders outside the shell — no tab bar competing for the thumb. */}
       <Route path="/app/sessions/:id/live" element={<Protected><MatchDayScreen /></Protected>} />
+      <Route path="/app/competitions/:id/fixtures/:fixtureId/live" element={<Protected><CompetitionMatchDayScreen /></Protected>} />
 
       {/* App */}
       <Route path="/app" element={<Protected><AppShell /></Protected>}>
@@ -116,6 +122,9 @@ export function Router() {
         <Route path="sessions" element={<SessionsScreen />} />
         <Route path="sessions/new" element={<NewSessionScreen />} />
         <Route path="sessions/:id" element={<SessionDetailScreen />} />
+        <Route path="competitions" element={<CompetitionsScreen />} />
+        <Route path="competitions/new" element={<NewCompetitionScreen />} />
+        <Route path="competitions/:id" element={<CompetitionDetailScreen />} />
         <Route path="leaderboard" element={<LeaderboardScreen />} />
         <Route path="awards" element={<AwardsScreen />} />
         <Route path="settings" element={<SettingsLayout />}>
@@ -124,6 +133,7 @@ export function Router() {
           <Route path="schedule" element={<ScheduleSettings />} />
           <Route path="football" element={<FootballSettings />} />
           <Route path="scoring" element={<ScoringSettings />} />
+          <Route path="competitions" element={<CompetitionSettings />} />
           <Route path="share" element={<ShareSettings />} />
           <Route path="members" element={<MembersSettings />} />
           <Route path="account" element={<AccountSettings />} />

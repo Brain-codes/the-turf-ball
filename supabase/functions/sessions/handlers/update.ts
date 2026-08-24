@@ -3,7 +3,7 @@ import { successResponse } from '../../_shared/response.ts'
 import { assertOwned, requireMember } from '../../_shared/auth.ts'
 import { oneOf, str, validate } from '../../_shared/validation.ts'
 
-const STATUSES = ['scheduled', 'live', 'completed', 'cancelled'] as const
+const STATUSES = ['scheduled', 'live', 'paused', 'completed', 'cancelled'] as const
 
 export async function updateSession(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)

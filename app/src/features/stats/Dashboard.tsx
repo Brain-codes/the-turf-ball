@@ -63,7 +63,7 @@ export function Dashboard() {
 
       {/* Live session takes over the top of the screen — if a game is on, that
           is the only thing the organizer wants to reach. */}
-      {data.live_session && (
+      {data.live_session && data.live_session.status !== 'paused' && (
         <FadeIn>
           <button
             onClick={() => navigate(`/app/sessions/${data.live_session!.id}/live`)}
@@ -76,6 +76,26 @@ export function Dashboard() {
             <span className="flex-1">
               <span className="block font-semibold text-chalk">Session in progress</span>
               <span className="text-[13px] text-chalk-muted">Tap to keep recording</span>
+            </span>
+            <span className="text-chalk-muted">→</span>
+          </button>
+        </FadeIn>
+      )}
+
+      {/* Paused isn't live and isn't over — it's a decision waiting to be
+          made, so it says what happened rather than pretending a game is on. */}
+      {data.live_session?.status === 'paused' && (
+        <FadeIn>
+          <button
+            onClick={() => navigate(`/app/sessions/${data.live_session!.id}/live`)}
+            className="mb-6 flex w-full items-center gap-3 rounded-2xl border border-card-yellow/40 bg-card-yellow/10 p-4 text-left"
+          >
+            <span className="shrink-0 text-[18px]">⏸</span>
+            <span className="flex-1">
+              <span className="block font-semibold text-chalk">Session paused</span>
+              <span className="text-[13px] text-chalk-muted">
+                Nothing recorded for 20 minutes — resume it, or end it
+              </span>
             </span>
             <span className="text-chalk-muted">→</span>
           </button>

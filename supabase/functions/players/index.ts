@@ -8,6 +8,7 @@ import { getPlayer } from './handlers/get.ts'
 import { updatePlayer } from './handlers/update.ts'
 import { removePlayer } from './handlers/remove.ts'
 import { approvePlayer, rejectPlayer } from './handlers/approve.ts'
+import { mergePlayer } from './handlers/merge.ts'
 
 Deno.serve(createRouter('players', {
   GET: {
@@ -19,6 +20,7 @@ Deno.serve(createRouter('players', {
     'bulk': bulkCreatePlayers,
     ':id/approve': approvePlayer,
     ':id/reject': rejectPlayer,
+    ':id/merge': mergePlayer,
   },
   PATCH: {
     ':id': updatePlayer,

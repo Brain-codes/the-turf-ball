@@ -7,7 +7,7 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
 import { Badge, Card, EmptyState, ErrorState, PlayerAvatar, PlayerName, RankBadge, Select, Skeleton } from '@/components/ui'
 import { points } from '@/lib/format'
-import type { Period, PlayerStats } from '@/types'
+import type { Period, PlayerStats, StatsBreakdown } from '@/types'
 
 export function LeaderboardScreen() {
   const { activeOrg } = useAuth()
@@ -117,6 +117,8 @@ export function LeaderboardScreen() {
                           <Breakdown label="Reds" value={row.red_cards} />
                           <Breakdown label="Punctuality" value={points(row.punctuality_score)} />
                         </div>
+                        <SourceBreakdown playerId={row.player_id} periodId={row.period_id} active={isOpen} />
+
                         <div className="px-4 pb-4">
                           <Link
                             to={`/app/players/${row.player_id}`}
@@ -153,6 +155,43 @@ function Breakdown({ label, value }: { label: string; value: number | string }) 
     <div>
       <div className="numeric text-xl text-chalk">{value}</div>
       <div className="mt-0.5 text-[10.5px] uppercase tracking-wider text-chalk-muted">{label}</div>
+    </div>
+  )
+}
+
+/**
+ * "Where did these come from?" — a player's goals may include competition
+ * matches, which count towards this total by default but can be toggled off
+ * per competition in Settings. This is the opt-in detail behind that total,
+ * not a second number competing with it.
+ */
+function SourceBreakdown({ playerId, periodId, active }: { playerId: string; periodId: string; active: boolean }) {
+  const [open, setOpen] = useState(false)
+  const { data } = useQuery({
+    queryKey: ['stats-breakdown', playerId, periodId],
+    queryFn: async () => (await api.get<StatsBreakdown>(`stats/${playerId}/breakdown`, { period_id: periodId })).data,
+    enabled: active && open,
+  })
+
+  if (!active) return null
+
+  return (
+    <div className="px-4 pb-2">
+      <button onClick={() => setOpen((v) => !v)} className="text-[12.5px] text-chalk-faint hover:text-chalk-muted">
+        {open ? 'Hide' : 'Show'} where these goals came from ?
+      </button>
+      {open && (
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[13px]">
+          <div className="rounded-lg bg-pitch-800 px-3 py-2">
+            <div className="text-chalk-muted">Sessions</div>
+            <div className="numeric text-chalk">{data?.session?.goals ?? 0} goals · {data?.session?.assists ?? 0} assists</div>
+          </div>
+          <div className="rounded-lg bg-pitch-800 px-3 py-2">
+            <div className="text-chalk-muted">Competitions</div>
+            <div className="numeric text-chalk">{data?.competition?.goals ?? 0} goals · {data?.competition?.assists ?? 0} assists</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

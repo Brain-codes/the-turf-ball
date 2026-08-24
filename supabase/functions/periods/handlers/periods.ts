@@ -48,7 +48,9 @@ export async function previewClose(ctx: Ctx): Promise<Response> {
     .from('sessions')
     .select('id', { count: 'exact', head: true })
     .eq('period_id', periodId)
-    .eq('status', 'live')
+    // A paused session is unfinished, not over — it can still be resumed, so
+    // it blocks closing the month exactly like a live one.
+    .in('status', ['live', 'paused'])
 
   return successResponse({
     period,
@@ -59,7 +61,7 @@ export async function previewClose(ctx: Ctx): Promise<Response> {
       period.status !== 'open'
         ? 'This month is already closed'
         : (liveSessions ?? 0) > 0
-          ? 'A session is still live — finish it first'
+          ? 'A session is still open — finish it first'
           : null,
   })
 }

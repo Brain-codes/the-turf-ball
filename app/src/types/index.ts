@@ -2,7 +2,7 @@ export type Role = 'owner' | 'admin' | 'recorder'
 export type PlayerPosition =
   | 'GK' | 'RB' | 'CB' | 'LB' | 'CDM' | 'CM' | 'CAM' | 'LM' | 'RM' | 'LW' | 'RW' | 'ST' | 'CF'
 export type PlayerStatus = 'active' | 'inactive' | 'guest' | 'pending'
-export type SessionStatus = 'scheduled' | 'live' | 'completed' | 'cancelled'
+export type SessionStatus = 'scheduled' | 'live' | 'paused' | 'completed' | 'cancelled'
 export type MatchStatus = 'pending' | 'live' | 'completed' | 'abandoned'
 export type Side = 'a' | 'b'
 export type PeriodStatus = 'open' | 'closed'
@@ -57,6 +57,8 @@ export interface OrgSettings {
   late_points: number
   very_late_points: number
   voting_enabled: boolean
+  auto_close_months: boolean
+  auto_close_grace_days: number
 }
 
 export interface PublicPage {
@@ -137,6 +139,10 @@ export interface Period {
   status: PeriodStatus
   starts_on?: string
   ends_on?: string
+  closed_at?: string | null
+  closed_automatically?: boolean
+  auto_close_blocked_at?: string | null
+  auto_close_blocked_reason?: string | null
 }
 
 export interface Session {
@@ -160,6 +166,9 @@ export interface Session {
   last_activity_at?: string | null
   last_viewed_at?: string | null
   awaiting_confirmation?: boolean
+  /** Set when the scheduler paused a quiet session. Cleared on resume. */
+  paused_at?: string | null
+  paused_reason?: string | null
   matches?: Match[]
   attendance?: Attendance[]
 }
@@ -259,7 +268,7 @@ export interface DashboardData {
   top_assister: PlayerStats | null
   top_keeper: PlayerStats | null
   recent_sessions: Session[]
-  live_session: { id: string } | null
+  live_session: { id: string; status?: SessionStatus; paused_at?: string | null } | null
 }
 
 export interface DeleteAccountPreview {
@@ -329,6 +338,122 @@ export interface PublicPageData {
   settings: { show_photos: boolean; show_cards: boolean; show_punctuality: boolean; show_sessions: boolean }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Competitions                                                                */
+/* -------------------------------------------------------------------------- */
+
+export type CompetitionStatus = 'draft' | 'drafting_teams' | 'scheduled' | 'live' | 'completed' | 'cancelled'
+
+export interface Competition {
+  id: string
+  organization_id: string
+  period_id: string
+  name: string
+  status: CompetitionStatus
+  starts_on: string
+  ends_on: string
+  day_ends_at: string | null
+  day_starts_at: string | null
+  evening_starts_at: string | null
+  evening_ends_at: string | null
+  matches_per_day: number | null
+  concurrent_matches: number
+  break_between_matches_minutes: number
+  split_into_halves: boolean
+  halftime_break_minutes: number | null
+  format: 'league'
+  double_round_robin: boolean
+  team_count: number
+  squad_size: number
+  pitch_size: number
+  match_duration_minutes: number | null
+  count_toward_stats: boolean
+  voided_at?: string | null
+  competition_teams?: CompetitionTeam[]
+  competition_players?: CompetitionPlayerLink[]
+}
+
+export interface CompetitionPlayerLink {
+  id: string
+  player_id: string
+  joined_at: string
+  removed_at: string | null
+  players?: Player
+}
+
+export interface CompetitionTeam {
+  id: string
+  competition_id: string
+  name: string | null
+  short_name: string | null
+  color: string | null
+  captain_player_id: string | null
+  sort_order: number
+  competition_team_players?: CompetitionTeamPlayerLink[]
+}
+
+export interface CompetitionTeamPlayerLink {
+  id: string
+  player_id: string
+  joined_at: string
+  removed_at: string | null
+  players?: Player
+}
+
+export interface CompetitionFixture {
+  id: string
+  competition_id: string
+  competition_round_id: string
+  sequence: number
+  home_team_id: string
+  away_team_id: string
+  scheduled_at: string | null
+  duration_minutes: number | null
+  match_id: string | null
+  home_team?: { id: string; name: string | null; short_name: string | null; color: string | null }
+  away_team?: { id: string; name: string | null; short_name: string | null; color: string | null }
+  matches?: { id: string; status: MatchStatus; side_a_score: number; side_b_score: number; started_at: string | null; ended_at: string | null }
+}
+
+export interface StandingsRow {
+  team_id: string
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goals_for: number
+  goals_against: number
+  goal_difference: number
+  points: number
+  team?: { id: string; name: string | null; short_name: string | null; color: string | null }
+}
+
+export interface TeamBalance {
+  team_id: string
+  player_count: number
+  average_quality: number
+  // null = not enough match history yet to compare teams meaningfully
+  strength_rating: number | null
+}
+
+export interface StatsBreakdownSource {
+  source: 'session' | 'competition'
+  appearances: number
+  goals: number
+  own_goals: number
+  assists: number
+  clean_sheets: number
+  yellow_cards: number
+  red_cards: number
+  saves: number
+}
+
+export interface StatsBreakdown {
+  period: Period
+  session: StatsBreakdownSource | null
+  competition: StatsBreakdownSource | null
+}
+
 export interface PublicSessionData {
   organization: { name: string; slug: string; logo_url: string | null }
   session: {
@@ -356,4 +481,125 @@ export interface PublicSessionData {
     minute: number | null
     players: { id: string; display_name: string; whatsapp_nickname?: string | null; jersey_number: number | null } | null
   }[]
+}
+
+/* -------------------------------------------------------------------------- */
+/* The monthly breakdown                                                       */
+/* -------------------------------------------------------------------------- */
+
+export interface ReportLine {
+  player_id: string
+  player: string
+  display_name?: string
+  photo_url?: string | null
+  goals: number
+  assists: number
+  contributions: number
+  clean_sheets: number
+  appearances: number
+  yellow_cards: number
+  red_cards: number
+  points: number
+  rank: number | null
+}
+
+export interface ReportRecord {
+  kind: 'month_record'
+  metric: string
+  metric_label: string
+  player_id: string
+  player: string
+  value: number
+  appearances: number
+  first_ever: boolean
+  previous: { player: string; value: number; appearances: number; month: string } | null
+}
+
+export interface ReportMilestone {
+  kind: 'milestone'
+  metric: string
+  noun: string
+  threshold: number
+  player_id: string
+  player: string
+  total: number
+  first_ever: boolean
+}
+
+export interface ReportDouble {
+  kind: 'double'
+  player_id: string
+  player: string
+  goals: number
+  assists: number
+  first_ever: boolean
+}
+
+export interface CareerLine {
+  player_id: string
+  player: string
+  goals: number
+  assists: number
+  contributions: number
+  clean_sheets: number
+  appearances: number
+  points: number
+}
+
+export interface RankedEntry {
+  player_id: string
+  player: string
+  value: number
+  appearances: number
+  per_game?: number
+  month?: string
+}
+
+export interface MonthReport {
+  provisional: boolean
+  generated_at: string
+  period: {
+    id: string
+    label: string
+    year: number
+    month: number
+    status: PeriodStatus
+    starts_on: string
+    ends_on: string
+  }
+  summary: {
+    players: number
+    goals: number
+    assists: number
+    clean_sheets: number
+    appearances: number
+    matches: number
+  }
+  squad_size: number
+  attendance: {
+    session_count: number
+    average: number
+    best: number
+    lowest: number
+    sessions: { session_id: string; date: string; title: string | null; attendees: number }[]
+  }
+  perfect_attendance: { player_id: string; player: string }[]
+  totals: ReportLine[]
+  awards: {
+    code: string
+    name: string
+    icon: string | null
+    player_id: string
+    player: string
+    photo_url: string | null
+    value: number | null
+  }[]
+  records: ReportRecord[]
+  doubles: ReportDouble[]
+  milestones: ReportMilestone[]
+  nominations: { player_id: string; player: string; nominations: number }[]
+  potm_history: { month: string; year: number; month_number: number; player_id: string; player: string; value: number }[]
+  month_records: Record<string, RankedEntry[]>
+  alltime: { table: CareerLine[]; top: Record<string, RankedEntry[]> }
+  headlines: string[]
 }

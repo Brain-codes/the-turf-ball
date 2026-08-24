@@ -174,6 +174,38 @@ export async function keepAlive(ctx: Ctx): Promise<Response> {
   return successResponse(data, 'Still going')
 }
 
+/**
+ * Un-pause a session the scheduler put to sleep after 20 quiet minutes.
+ *
+ * Deliberately restores it exactly as it was — the matches were never
+ * touched, so the same match picks straight back up with its clock and its
+ * events intact. The activity clock is reset so it isn't paused again on the
+ * scheduler's very next pass.
+ */
+export async function resumeSession(ctx: Ctx): Promise<Response> {
+  const member = await requireMember(ctx.req, ctx.db)
+  const sessionId = ctx.segments[0]
+  await assertOwned(ctx.db, 'sessions', sessionId, member.organizationId)
+
+  const now = new Date().toISOString()
+  const { data, error } = await ctx.db
+    .from('sessions')
+    .update({
+      status: 'live',
+      paused_at: null,
+      paused_reason: null,
+      awaiting_confirmation: false,
+      last_activity_at: now,
+      last_viewed_at: now,
+    })
+    .eq('id', sessionId)
+    .select('*')
+    .single()
+
+  if (error) throw new Error(error.message)
+  return successResponse(data, 'Session resumed')
+}
+
 /** Wrap up: close any unfinished matches, then recompute the month. */
 export async function completeSession(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)
@@ -188,7 +220,13 @@ export async function completeSession(ctx: Ctx): Promise<Response> {
 
   const { data, error } = await ctx.db
     .from('sessions')
-    .update({ status: 'completed', ended_at: new Date().toISOString(), awaiting_confirmation: false })
+    .update({
+      status: 'completed',
+      ended_at: new Date().toISOString(),
+      awaiting_confirmation: false,
+      paused_at: null,
+      paused_reason: null,
+    })
     .eq('id', sessionId)
     .select('*')
     .single()

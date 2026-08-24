@@ -78,6 +78,8 @@ export function MatchDayScreen() {
     [session],
   )
 
+  const [editingEvents, setEditingEvents] = useState(false)
+
   if (isLoading) {
     return (
       <div className="min-h-dvh bg-void p-5">
@@ -108,7 +110,7 @@ export function MatchDayScreen() {
         <span className="flex-1 text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-chalk-muted">
           Match Day
         </span>
-        <span className="w-14 text-right">
+        <span className="flex w-14 shrink-0 items-center justify-end gap-2">
           {offline ? (
             <span className="text-[11px] font-semibold uppercase tracking-wider text-card-yellow">
               Offline
@@ -118,6 +120,15 @@ export function MatchDayScreen() {
               {queued} syncing
             </span>
           ) : null}
+          {activeMatch && (
+            <button
+              onClick={() => setEditingEvents(true)}
+              aria-label="Edit recorded goals, assists and cards"
+              className="tap-target -mr-2 flex items-center px-2 text-[13px] font-semibold text-chalk-muted"
+            >
+              Edit
+            </button>
+          )}
         </span>
       </header>
 
@@ -140,7 +151,19 @@ export function MatchDayScreen() {
         />
       )}
 
-      {needsAttendance ? (
+      {session.status === 'paused' ? (
+        <SessionPausedStep
+          sessionId={session.id}
+          pausedAt={session.paused_at ?? null}
+          onResumed={() => queryClient.invalidateQueries({ queryKey: ['session', id] })}
+          onEndSession={async () => {
+            await flush()
+            await api.post(`sessions/${id}/complete`)
+            queryClient.invalidateQueries()
+            navigate(`/app/sessions/${id}`)
+          }}
+        />
+      ) : needsAttendance ? (
         <AttendanceStep
           sessionId={session.id}
           existingAttendance={session.attendance ?? []}
@@ -186,6 +209,233 @@ export function MatchDayScreen() {
           }}
         />
       )}
+
+      {editingEvents && activeMatch && (
+        <EventsEditorSheet
+          match={activeMatch}
+          onClose={() => setEditingEvents(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Edit sheet — reachable from the header. Fixes a mis-tap after the fact:    */
+/* wrong scorer, wrong assister, or an event that shouldn't have been logged  */
+/* at all. Shares the same ['match-events', match.id] query key as LiveMatch  */
+/* so the stat board and activity feed there pick up changes immediately.    */
+/* -------------------------------------------------------------------------- */
+
+function EventsEditorSheet({
+  match,
+  onClose,
+}: {
+  match: Match & { match_players?: MatchPlayer[] }
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [reassigning, setReassigning] = useState<MatchEvent | null>(null)
+  const [editingAssist, setEditingAssist] = useState<MatchEvent | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState<MatchEvent | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const { data: matchEvents, isLoading } = useQuery({
+    queryKey: ['match-events', match.id],
+    queryFn: async () => (await api.get<MatchEvent[]>('events', { match_id: match.id })).data,
+  })
+  // Assists ride along with their goal (edited via that goal's "Assist"
+  // button below) rather than as their own row — patching an assist event
+  // directly wouldn't keep the paired goal's related_player_id in sync.
+  const events = (matchEvents ?? [])
+    .filter((e) => e.event_type !== 'assist')
+    .slice()
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  const rosterPlayers: Player[] = (match.match_players ?? [])
+    .filter((r) => r.players)
+    .map((r) => ({ ...r.players!, id: r.player_id }))
+
+  function assisterName(event: MatchEvent) {
+    if (!event.related_player_id) return null
+    return rosterPlayers.find((p) => p.id === event.related_player_id)?.display_name ?? 'Unknown'
+  }
+
+  async function deleteEvent(event: MatchEvent) {
+    setBusyId(event.id)
+    setError(null)
+    try {
+      await api.del(`events/${event.id}`)
+      await queryClient.invalidateQueries({ queryKey: ['match-events', match.id] })
+      setConfirmingDelete(null)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not delete that — try again')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function reassign(event: MatchEvent, player: Player) {
+    setBusyId(event.id)
+    setError(null)
+    try {
+      await api.patch(`events/${event.id}`, { player_id: player.id })
+      await queryClient.invalidateQueries({ queryKey: ['match-events', match.id] })
+      setReassigning(null)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update that — try again')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function setAssist(event: MatchEvent, player: Player | null) {
+    setBusyId(event.id)
+    setError(null)
+    try {
+      await api.patch(`events/${event.id}`, { related_player_id: player?.id ?? null })
+      await queryClient.invalidateQueries({ queryKey: ['match-events', match.id] })
+      setEditingAssist(null)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update that — try again')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-end bg-black/60 backdrop-blur-sm">
+      <div className="flex max-h-[85vh] w-full flex-col rounded-t-2xl border-t border-pitch-700 bg-pitch-900 p-4">
+        <div className="mb-3 flex shrink-0 items-center justify-between">
+          <h3 className="text-lg text-chalk">Edit this match</h3>
+          <button onClick={onClose} className="text-[14px] text-chalk-muted">
+            Done
+          </button>
+        </div>
+        <p className="mb-3 shrink-0 text-[13px] text-chalk-muted">
+          Fix a wrong scorer or remove something that shouldn't have been logged.
+        </p>
+
+        {error && (
+          <p className="mb-3 shrink-0 rounded-lg border border-card-red/30 bg-card-red/10 px-3 py-2 text-[13px] text-card-red">
+            {error}
+          </p>
+        )}
+
+        {reassigning ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[14px] text-chalk">
+                Reassign {EVENT_LABEL[reassigning.event_type] ?? reassigning.event_type}
+              </p>
+              <button onClick={() => setReassigning(null)} className="text-[13px] text-chalk-muted">
+                Cancel
+              </button>
+            </div>
+            <PlayerGrid
+              players={rosterPlayers.filter((p) => p.id !== reassigning.player_id)}
+              onPick={(p) => reassign(reassigning, p)}
+            />
+          </div>
+        ) : editingAssist ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[14px] text-chalk">
+                Who assisted {editingAssist.players?.display_name ?? 'this goal'}?
+              </p>
+              <button onClick={() => setEditingAssist(null)} className="text-[13px] text-chalk-muted">
+                Cancel
+              </button>
+            </div>
+            {editingAssist.related_player_id && (
+              <button
+                disabled={busyId === editingAssist.id}
+                onClick={() => setAssist(editingAssist, null)}
+                className="tap-target mb-3 w-full rounded-xl border border-pitch-700 bg-pitch-900 text-[15px] font-semibold text-chalk disabled:opacity-50"
+              >
+                No assist — remove it
+              </button>
+            )}
+            <PlayerGrid
+              players={rosterPlayers.filter((p) => p.id !== editingAssist.player_id)}
+              onPick={(p) => setAssist(editingAssist, p)}
+            />
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+            {isLoading && <Skeleton className="h-20" />}
+            {!isLoading && events.length === 0 && (
+              <p className="py-4 text-center text-[13.5px] text-chalk-faint">Nothing recorded yet</p>
+            )}
+            {events.map((e) => (
+              <div
+                key={e.id}
+                className="flex items-center gap-3 rounded-xl border border-pitch-700 bg-pitch-800 px-3.5 py-2.5"
+              >
+                <span className="text-[16px]">{EVENT_ICON[e.event_type] ?? '•'}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-medium text-chalk">
+                    {e.players?.display_name ?? 'Unknown'}
+                  </p>
+                  <p className="text-[12px] text-chalk-muted">
+                    {EVENT_LABEL[e.event_type] ?? e.event_type}
+                    {e.minute !== null ? ` · ${e.minute}'` : ''}
+                    {e.event_type === 'goal' && (
+                      <> · {assisterName(e) ? `assist: ${assisterName(e)}` : 'no assist'}</>
+                    )}
+                  </p>
+                </div>
+                {confirmingDelete?.id === e.id ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      disabled={busyId === e.id}
+                      onClick={() => deleteEvent(e)}
+                      className="tap-target rounded-lg border border-card-red px-2.5 text-[12px] font-medium text-card-red disabled:opacity-50"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      onClick={() => setConfirmingDelete(null)}
+                      className="tap-target rounded-lg border border-pitch-600 px-2.5 text-[12px] font-medium text-chalk-muted"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex shrink-0 items-center gap-2">
+                    {e.event_type === 'goal' && rosterPlayers.length > 1 && (
+                      <button
+                        disabled={busyId === e.id}
+                        onClick={() => setEditingAssist(e)}
+                        className="tap-target rounded-lg border border-pitch-600 px-2.5 text-[12px] font-medium text-chalk-muted disabled:opacity-50"
+                      >
+                        Assist
+                      </button>
+                    )}
+                    {e.event_type !== 'own_goal' && rosterPlayers.length > 1 && (
+                      <button
+                        disabled={busyId === e.id}
+                        onClick={() => setReassigning(e)}
+                        className="tap-target rounded-lg border border-pitch-600 px-2.5 text-[12px] font-medium text-chalk-muted disabled:opacity-50"
+                      >
+                        Reassign
+                      </button>
+                    )}
+                    <button
+                      disabled={busyId === e.id}
+                      onClick={() => setConfirmingDelete(e)}
+                      className="tap-target rounded-lg border border-card-red/50 px-2.5 text-[12px] font-medium text-card-red disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -483,6 +733,76 @@ function StillGoingPrompt({
   )
 }
 
+/* -------------------------------------------------------------------------- */
+/* Paused for inactivity — the session went 20 minutes without anything      */
+/* being recorded, so it stopped being live. Nothing was finalised: the      */
+/* match, its roster and its events are all exactly where they were. The     */
+/* only two ways out are the organizer's, not the system's.                  */
+/* -------------------------------------------------------------------------- */
+
+function SessionPausedStep({
+  sessionId,
+  pausedAt,
+  onResumed,
+  onEndSession,
+}: {
+  sessionId: string
+  pausedAt: string | null
+  onResumed: () => void
+  onEndSession: () => void
+}) {
+  const [error, setError] = useState<string | null>(null)
+  const [ending, setEnding] = useState(false)
+
+  const resume = useMutation({
+    mutationFn: async () => {
+      await api.post(`sessions/${sessionId}/resume`)
+    },
+    onSuccess: onResumed,
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not resume the session'),
+  })
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
+      <div>
+        <h1 className="mb-1 text-2xl text-chalk">Session paused</h1>
+        <p className="text-[14px] text-chalk-muted">
+          Nothing was recorded for 20 minutes, so this session was paused
+          {pausedAt ? ` at ${pausedTime(pausedAt)}` : ''}. It hasn't been ended — everything
+          recorded is still here.
+        </p>
+      </div>
+
+      {error && <p className="text-[14px] text-card-red">{error}</p>}
+
+      <div className="w-full space-y-2">
+        <Button size="xl" fullWidth loading={resume.isPending} onClick={() => resume.mutate()}>
+          Resume session
+        </Button>
+        <Button
+          variant="ghost"
+          fullWidth
+          loading={ending}
+          onClick={async () => {
+            setEnding(true)
+            try {
+              await onEndSession()
+            } finally {
+              setEnding(false)
+            }
+          }}
+        >
+          End session
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function pausedTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
 function MatchPausedStep({
   match,
   onResumed,
@@ -586,6 +906,7 @@ function LiveMatch({
   const [actionError, setActionError] = useState<string | null>(null)
   const [viewingSquad, setViewingSquad] = useState(false)
   const [addedFeedback, setAddedFeedback] = useState<string | null>(null)
+  const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
 
   const startedRef = useRef(match.started_at ? new Date(match.started_at).getTime() : Date.now())
 
@@ -687,7 +1008,10 @@ function LiveMatch({
       label: string,
     ): Promise<boolean> => {
       const clientKey = newClientKey()
-      const minute = Math.floor(elapsed / 60)
+      // The clock is real wall time since kickoff, so a match left open
+      // overnight can read hundreds of minutes. The server only accepts
+      // 0-200, so clamp rather than let a late tap fail validation.
+      const minute = Math.min(200, Math.max(0, Math.floor(elapsed / 60)))
 
       setUndo({ label, eventId: null, clientKey })
       setActionError(null)
@@ -801,6 +1125,27 @@ function LiveMatch({
       // reported bug was a tap that "did nothing": in reality the write was
       // failing and the error was being swallowed.
       setAddingLateError(err instanceof ApiError ? err.message : 'Could not add that player — try again')
+    } finally {
+      setAddingLateBusy(false)
+    }
+  }
+
+  /** Undoes a mistaken attendance tap — takes them off the pitch roster and marks them absent. */
+  async function removePlayer(player: Player) {
+    setAddingLateBusy(true)
+    setAddingLateError(null)
+    try {
+      await api.patch(`matches/${match.id}/roster`, {
+        side_a: rosterPlayers.filter((p) => p.id !== player.id).map((p) => p.id),
+      })
+      await api.post(`sessions/${sessionId}/attendance`, {
+        entries: [{ player_id: player.id, status: 'absent' }],
+      })
+      await queryClient.invalidateQueries({ queryKey: ['session', sessionId] })
+      setAddedFeedback(`${player.display_name} marked not present`)
+      setTimeout(() => setAddedFeedback((current) => (current === `${player.display_name} marked not present` ? null : current)), 2500)
+    } catch (err) {
+      setAddingLateError(err instanceof ApiError ? err.message : 'Could not update that — try again')
     } finally {
       setAddingLateBusy(false)
     }
@@ -1240,9 +1585,31 @@ function LiveMatch({
                           whatsappNickname={p.whatsapp_nickname}
                           className="flex-1 text-[15px] text-chalk"
                         />
-                        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-volt-400">
-                          Present
-                        </span>
+                        {confirmingRemove === p.id ? (
+                          <div className="flex shrink-0 items-center gap-2">
+                            <button
+                              disabled={addingLateBusy}
+                              onClick={() => { removePlayer(p); setConfirmingRemove(null) }}
+                              className="tap-target rounded-lg border border-card-red px-2.5 text-[12px] font-medium text-card-red disabled:opacity-50"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => setConfirmingRemove(null)}
+                              className="tap-target rounded-lg border border-pitch-600 px-2.5 text-[12px] font-medium text-chalk-muted"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            disabled={addingLateBusy}
+                            onClick={() => setConfirmingRemove(p.id)}
+                            className="tap-target shrink-0 rounded-lg border border-card-red/50 px-2.5 text-[12px] font-medium text-card-red disabled:opacity-50"
+                          >
+                            Not present
+                          </button>
+                        )}
                       </div>
                     ))}
                   {rosterPlayers.length === 0 && (

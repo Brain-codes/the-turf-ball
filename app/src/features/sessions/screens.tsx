@@ -12,7 +12,7 @@ import { FadeIn, Sheet } from '@/components/motion'
 import { cn } from '@/lib/cn'
 import { BAND_LABEL, countdown, fullDate, shortDate, time } from '@/lib/format'
 import { sessionCounted } from '@/types'
-import type { Attendance, MatchEvent, Player, Session, UpcomingSlot } from '@/types'
+import type { Attendance, Competition, MatchEvent, Player, Session, UpcomingSlot } from '@/types'
 
 const EDIT_WINDOW_HOURS = 5
 
@@ -63,6 +63,18 @@ export function SessionsScreen() {
     refetchInterval: 60_000,
   })
 
+  // A day a competition has claimed shouldn't read as a session that was
+  // skipped — it shows a competition card in that slot instead. Fetched
+  // once, matched client-side against each session's date.
+  const { data: competitionsData } = useQuery({
+    queryKey: ['competitions', activeOrg?.id],
+    queryFn: async () => (await api.get<Competition[]>('competitions')).data,
+    enabled: !!activeOrg,
+  })
+  const competitions = competitionsData ?? []
+  const competitionForDate = (date: string) =>
+    competitions.find((c) => c.starts_on <= date && date <= c.ends_on)
+
   const isAdmin = activeOrg?.role === 'owner' || activeOrg?.role === 'admin'
 
   const approve = useMutation({
@@ -77,7 +89,7 @@ export function SessionsScreen() {
   // The scheduler auto-generates the next session ahead of time (HANDOFF.md
   // feature 3), so "next session" is whichever scheduled/live one is soonest.
   const nextSession = sessions
-    .filter((s) => s.status === 'scheduled' || s.status === 'live')
+    .filter((s) => s.status === 'scheduled' || s.status === 'live' || s.status === 'paused')
     .sort((a, b) => new Date(a.kickoff_at).getTime() - new Date(b.kickoff_at).getTime())[0]
 
   return (
@@ -91,19 +103,35 @@ export function SessionsScreen() {
         {nextSession && (
           <Card className="mb-4 border-volt-400/30 bg-volt-400/5">
             <div className="text-[11px] uppercase tracking-wider text-chalk-muted">
-              {nextSession.status === 'live' ? 'Live now' : 'Next session'}
+              {nextSession.status === 'live'
+                ? 'Live now'
+                : nextSession.status === 'paused'
+                  ? 'Paused'
+                  : 'Next session'}
             </div>
             <div className="mt-1 text-[17px] font-semibold text-chalk">
               {nextSession.title || fullDate(nextSession.session_date)}
             </div>
             <div key={now} className="mt-0.5 numeric text-[15px] text-volt-400">
-              {nextSession.status === 'live' ? 'In progress' : countdown(nextSession.kickoff_at)}
+              {nextSession.status === 'live'
+                ? 'In progress'
+                : nextSession.status === 'paused'
+                  ? 'Paused — not ended'
+                  : countdown(nextSession.kickoff_at)}
             </div>
             <Link
-              to={nextSession.status === 'live' ? `/app/sessions/${nextSession.id}/live` : `/app/sessions/${nextSession.id}`}
+              to={
+                nextSession.status === 'live' || nextSession.status === 'paused'
+                  ? `/app/sessions/${nextSession.id}/live`
+                  : `/app/sessions/${nextSession.id}`
+              }
               className="mt-2 inline-block text-[13px] text-volt-400"
             >
-              {nextSession.status === 'live' ? 'Rejoin →' : 'View →'}
+              {nextSession.status === 'live'
+                ? 'Rejoin →'
+                : nextSession.status === 'paused'
+                  ? 'Resume or end →'
+                  : 'View →'}
             </Link>
           </Card>
         )}
@@ -127,13 +155,43 @@ export function SessionsScreen() {
               const flagged = !!session.flagged_inactive_at
               const counted = sessionCounted(session)
               const cancelled = session.status === 'cancelled'
+              const competition = competitionForDate(session.session_date)
+
+              // A day claimed by a competition reads as the competition, not
+              // as a session with nothing recorded — the scheduler already
+              // knows not to flag it inactive; this is the matching frontend
+              // half of that decision.
+              if (competition) {
+                return (
+                  <Link key={session.id} to={`/app/competitions/${competition.id}`}>
+                    <Card className="border-volt-400/20 transition-colors hover:border-volt-400/40">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[15px] text-chalk">🏆 {competition.name}</span>
+                            {competition.status === 'live' && <Badge tone="live">Live</Badge>}
+                          </div>
+                          <div className="mt-0.5 text-[13px] text-chalk-muted">
+                            {fullDate(session.session_date)} · Competition matchday
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  </Link>
+                )
+              }
+
               return (
                 <Card
                   key={session.id}
                   className={cn('transition-colors hover:border-pitch-600', cancelled && 'opacity-50')}
                 >
                   <Link
-                    to={session.status === 'live' ? `/app/sessions/${session.id}/live` : `/app/sessions/${session.id}`}
+                    to={
+                      session.status === 'live' || session.status === 'paused'
+                        ? `/app/sessions/${session.id}/live`
+                        : `/app/sessions/${session.id}`
+                    }
                     className="block"
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -143,6 +201,7 @@ export function SessionsScreen() {
                             {session.title || shortDate(session.session_date)}
                           </span>
                           {session.status === 'live' && <Badge tone="live">Live</Badge>}
+                          {session.status === 'paused' && <Badge tone="warn">Paused</Badge>}
                           {session.status === 'scheduled' && <Badge>Upcoming</Badge>}
                           {cancelled && <Badge>Cancelled</Badge>}
                           {flagged && (
@@ -384,11 +443,19 @@ interface SessionDetail extends Session {
 export function SessionDetailScreen() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const { data: session, isLoading, error, refetch } = useQuery({
     queryKey: ['session', id],
     queryFn: async () => (await api.get<SessionDetail>(`sessions/${id}`)).data,
     enabled: !!id,
+  })
+
+  // Ending a paused session from here, rather than making the organizer go
+  // back into match day just to close it out.
+  const endSession = useMutation({
+    mutationFn: async () => api.post(`sessions/${id}/complete`),
+    onSuccess: () => queryClient.invalidateQueries(),
   })
 
   if (isLoading) {
@@ -410,12 +477,19 @@ export function SessionDetailScreen() {
   const delayMins = session.actual_kickoff_at
     ? (new Date(session.actual_kickoff_at).getTime() - new Date(session.kickoff_at).getTime()) / 60_000
     : 0
-  const overtimeMins = session.ended_at && session.scheduled_end_at
-    ? (new Date(session.ended_at).getTime() - new Date(session.scheduled_end_at).getTime()) / 60_000
+  // Older sessions (before scheduled_end_at was tracked) fall back to
+  // kickoff + 90 minutes, same default the backend uses, so overtime still
+  // shows instead of silently disappearing.
+  const scheduledEndAt = session.scheduled_end_at
+    ?? new Date(new Date(session.kickoff_at).getTime() + 90 * 60_000).toISOString()
+  const overtimeMins = session.ended_at
+    ? (new Date(session.ended_at).getTime() - new Date(scheduledEndAt).getTime()) / 60_000
     : 0
   const elapsedMins = session.ended_at && session.actual_kickoff_at
     ? (new Date(session.ended_at).getTime() - new Date(session.actual_kickoff_at).getTime()) / 60_000
     : null
+  const endedOnDifferentDay = session.ended_at
+    && new Date(session.ended_at).toDateString() !== new Date(session.kickoff_at).toDateString()
 
   const present = session.attendance.filter((a) => a.status === 'present')
 
@@ -433,6 +507,30 @@ export function SessionDetailScreen() {
       />
 
       <div className="px-5">
+        {session.status === 'paused' && (
+          <Card className="mb-5 border-card-yellow/30 bg-card-yellow/5">
+            <p className="text-[13.5px] leading-relaxed text-chalk">
+              This session was paused because nothing was recorded for 20 minutes
+              {session.paused_at ? ` (at ${time(session.paused_at)})` : ''}. It hasn't been
+              ended — everything recorded so far is safe. Resume it, or end it yourself.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" fullWidth onClick={() => navigate(`/app/sessions/${session.id}/live`)}>
+                Resume
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                fullWidth
+                loading={endSession.isPending}
+                onClick={() => endSession.mutate()}
+              >
+                End session
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {flagged && (
           <Card className="mb-5 border-card-yellow/30 bg-card-yellow/5">
             <p className="text-[13.5px] leading-relaxed text-chalk">
@@ -487,10 +585,8 @@ export function SessionDetailScreen() {
                 <div className="flex justify-between">
                   <span className="text-chalk-muted">Ended</span>
                   <span className="text-chalk">
+                    {endedOnDifferentDay && `${shortDate(session.ended_at)} `}
                     {time(session.ended_at)}
-                    {overtimeMins >= 1 && (
-                      <span className="text-chalk-faint"> ({formatMins(overtimeMins)} over)</span>
-                    )}
                   </span>
                 </div>
               )}
@@ -501,6 +597,14 @@ export function SessionDetailScreen() {
                 </div>
               )}
             </Card>
+            {/* Overtime gets its own callout, not a small parenthetical —
+                it's usually the number someone actually came here to check. */}
+            {overtimeMins >= 1 && (
+              <p className="mt-2 text-[13px] text-card-yellow">
+                Ran {formatMins(overtimeMins)} past its scheduled end
+                {endedOnDifferentDay ? '' : ` (${time(scheduledEndAt)})`}.
+              </p>
+            )}
           </section>
         )}
 
@@ -534,7 +638,11 @@ export function SessionDetailScreen() {
 
         {!isCompleted && (
           <Button size="xl" fullWidth onClick={() => navigate(`/app/sessions/${id}/live`)}>
-            {session.status === 'live' ? 'Back to match day' : 'Enter session'}
+            {session.status === 'live'
+              ? 'Back to match day'
+              : session.status === 'paused'
+                ? 'Resume match day'
+                : 'Enter session'}
           </Button>
         )}
 
