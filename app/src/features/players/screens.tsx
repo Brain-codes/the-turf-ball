@@ -893,8 +893,9 @@ export function PlayerProfileScreen() {
               <StatTile label="Points" value={points(stats.total_points)} />
             </div>
 
-            <div className="mb-7 grid grid-cols-3 gap-2.5">
+            <div className="mb-7 grid grid-cols-4 gap-2.5">
               <StatTile label="Clean sheets" value={stats.clean_sheets} />
+              <StatTile label="Pen saves" value={stats.penalty_saves} />
               <StatTile label="Yellows" value={stats.yellow_cards} />
               <StatTile label="Reds" value={stats.red_cards} />
             </div>

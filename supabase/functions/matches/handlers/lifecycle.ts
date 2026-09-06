@@ -45,7 +45,8 @@ export async function startMatch(ctx: Ctx): Promise<Response> {
  *
  * Clean sheets awarded at the earlier finish were only ever provisional
  * against that moment's score — cleared here and re-decided at the next
- * real finish, same as finishMatch already does when called twice.
+ * real finish, same as finishMatch already does when called twice. A clean
+ * sheet somebody recorded by hand is not provisional and survives.
  */
 export async function resumeMatch(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)
@@ -57,6 +58,7 @@ export async function resumeMatch(ctx: Ctx): Promise<Response> {
     .delete()
     .eq('match_id', matchId)
     .eq('event_type', 'clean_sheet')
+    .filter('metadata->>manual', 'is', null)
 
   const { data, error } = await ctx.db
     .from('matches')
@@ -115,6 +117,19 @@ export async function finishMatch(ctx: Ctx): Promise<Response> {
       .select('player_id, side, is_goalkeeper')
       .eq('match_id', matchId)
 
+    // Anyone can go in goal in 5-a-side, so a clean sheet tapped in during the
+    // match is the only reliable signal there is. Those rows are left exactly
+    // as they are and excluded from the automatic decision below.
+    const { data: manual } = await ctx.db
+      .from('match_events')
+      .select('player_id')
+      .eq('match_id', matchId)
+      .eq('event_type', 'clean_sheet')
+      .is('voided_at', null)
+      .filter('metadata->>manual', 'eq', 'true')
+
+    const manualPlayerIds = new Set((manual ?? []).map((m) => m.player_id as string))
+
     let awarded: { player_id: string; side: 'a' | 'b' }[] = []
 
     if (settings.clean_sheet_policy === 'manual') {
@@ -135,11 +150,16 @@ export async function finishMatch(ctx: Ctx): Promise<Response> {
     }
 
     // Replace rather than append, so finishing a match twice cannot double up.
+    // Only the automatic awards are replaced — a manual one is a decision, not
+    // a derivation, and re-finishing must not silently undo it.
     await ctx.db
       .from('match_events')
       .delete()
       .eq('match_id', matchId)
       .eq('event_type', 'clean_sheet')
+      .filter('metadata->>manual', 'is', null)
+
+    awarded = awarded.filter((a) => !manualPlayerIds.has(a.player_id))
 
     if (awarded.length > 0) {
       await ctx.db.from('match_events').insert(

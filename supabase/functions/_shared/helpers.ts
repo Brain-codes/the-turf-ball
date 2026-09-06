@@ -13,6 +13,25 @@ export async function openPeriodId(db: SupabaseClient, organizationId: string): 
   return data as string
 }
 
+/**
+ * The month a dated thing belongs to — always its OWN date, never "whichever
+ * month happens to be open right now". A session played on 3 December belongs
+ * to December even if it was created back in August, and the months in between
+ * roll forward on their own to make room for it.
+ */
+export async function periodForDate(
+  db: SupabaseClient,
+  organizationId: string,
+  date: string,
+): Promise<string> {
+  const { data, error } = await db.rpc('period_for_date', {
+    p_org: organizationId,
+    p_date: date,
+  })
+  if (error) throw unprocessable(error.message)
+  return data as string
+}
+
 /** Resolve the period a request is asking about: explicit id, or the open one. */
 export async function resolvePeriod(
   db: SupabaseClient,
@@ -41,17 +60,37 @@ export async function resolvePeriod(
   return data
 }
 
-/** Recording into a closed month is refused — that is the whole point of closing. */
+/**
+ * Recording into a closed month is refused — that is the whole point of
+ * closing. But "not open" covers two different situations and they must not
+ * read the same:
+ *
+ *   * closed_at set  — the month was properly closed, awards and all. Refuse.
+ *   * closed_at null — the month exists but has not had its turn yet, because
+ *     the month before it is still inside its grace window. Nothing was
+ *     "closed" here. Roll the months forward once and look again; if the
+ *     previous month is genuinely over, this one opens and recording carries
+ *     on without anyone having to do anything.
+ */
 export async function assertPeriodOpen(db: SupabaseClient, periodId: string): Promise<void> {
-  const { data, error } = await db
-    .from('periods')
-    .select('status, label')
-    .eq('id', periodId)
-    .maybeSingle()
+  const select = 'status, label, starts_on, closed_at, organization_id'
+  let { data, error } = await db.from('periods').select(select).eq('id', periodId).maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw notFound('Month not found')
+
+  if (data.status !== 'open' && !data.closed_at) {
+    await openPeriodId(db, data.organization_id)
+    const retry = await db.from('periods').select(select).eq('id', periodId).maybeSingle()
+    if (retry.error) throw new Error(retry.error.message)
+    if (retry.data) data = retry.data
+  }
+
   if (data.status !== 'open') {
-    throw unprocessable(`${data.label} has been closed. Reopen it first if you need to change it.`)
+    throw unprocessable(
+      data.closed_at
+        ? `${data.label} has been closed. Reopen it first if you need to change it.`
+        : `${data.label} hasn't opened yet — the month before it is still running.`,
+    )
   }
 }
 

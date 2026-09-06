@@ -10,7 +10,7 @@ export type Band = 'early' | 'on_time' | 'late' | 'very_late'
 
 export type EventType =
   | 'goal' | 'own_goal' | 'assist' | 'yellow_card' | 'red_card'
-  | 'clean_sheet' | 'appearance' | 'punctuality' | 'save' | 'motm'
+  | 'clean_sheet' | 'penalty_save' | 'appearance' | 'punctuality' | 'save' | 'motm'
 
 export interface Profile {
   id: string
@@ -48,6 +48,7 @@ export interface OrgSettings {
   track_punctuality: boolean
   track_cards: boolean
   track_clean_sheets: boolean
+  track_penalty_saves: boolean
   guests_on_leaderboard: boolean
   early_before_mins: number
   on_time_after_mins: number
@@ -124,6 +125,7 @@ export interface PlayerStats {
   yellow_cards: number
   red_cards: number
   saves: number
+  penalty_saves: number
   punctuality_score: number
   vote_points: number
   total_points: number
@@ -262,11 +264,20 @@ export interface Award {
 
 export interface DashboardData {
   period: Period
-  totals: { goals: number; assists: number; clean_sheets: number; cards: number; players: number; sessions: number }
+  totals: {
+    goals: number
+    assists: number
+    clean_sheets: number
+    penalty_saves: number
+    cards: number
+    players: number
+    sessions: number
+  }
   leaderboard: PlayerStats[]
   top_scorer: PlayerStats | null
   top_assister: PlayerStats | null
   top_keeper: PlayerStats | null
+  top_penalty_stopper: PlayerStats | null
   recent_sessions: Session[]
   live_session: { id: string; status?: SessionStatus; paused_at?: string | null } | null
 }
@@ -308,6 +319,7 @@ export interface PublicRow {
   goals: number
   assists: number
   clean_sheets: number
+  penalty_saves: number
   total_points: number
   yellow_cards?: number
   red_cards?: number
@@ -333,6 +345,7 @@ export interface PublicPageData {
   top_scorer: { player: PublicPlayerRef; value: number } | null
   top_assister: { player: PublicPlayerRef; value: number } | null
   top_keeper: { player: PublicPlayerRef; value: number } | null
+  top_penalty_stopper: { player: PublicPlayerRef; value: number } | null
   sessions: Session[]
   live_session: { id: string; title: string | null; session_date: string } | null
   settings: { show_photos: boolean; show_cards: boolean; show_punctuality: boolean; show_sessions: boolean }
@@ -446,6 +459,7 @@ export interface StatsBreakdownSource {
   yellow_cards: number
   red_cards: number
   saves: number
+  penalty_saves: number
 }
 
 export interface StatsBreakdown {
@@ -496,6 +510,7 @@ export interface ReportLine {
   assists: number
   contributions: number
   clean_sheets: number
+  penalty_saves: number
   appearances: number
   yellow_cards: number
   red_cards: number
@@ -542,6 +557,7 @@ export interface CareerLine {
   assists: number
   contributions: number
   clean_sheets: number
+  penalty_saves: number
   appearances: number
   points: number
 }
@@ -572,6 +588,7 @@ export interface MonthReport {
     goals: number
     assists: number
     clean_sheets: number
+    penalty_saves: number
     appearances: number
     matches: number
   }
@@ -601,5 +618,101 @@ export interface MonthReport {
   potm_history: { month: string; year: number; month_number: number; player_id: string; player: string; value: number }[]
   month_records: Record<string, RankedEntry[]>
   alltime: { table: CareerLine[]; top: Record<string, RankedEntry[]> }
+  headlines: string[]
+}
+
+/* -------------------------------------------------------------------------- */
+/* One session, wrapped                                                        */
+/* -------------------------------------------------------------------------- */
+
+export interface SessionLine {
+  player_id: string
+  player: string
+  display_name?: string
+  photo_url?: string | null
+  goals: number
+  assists: number
+  contributions: number
+  own_goals: number
+  clean_sheets: number
+  yellow_cards: number
+  red_cards: number
+  saves: number
+  penalty_saves: number
+  matches_played: number
+  kept_goal: boolean
+  punctuality_band: string | null
+}
+
+export interface SessionRankedEntry {
+  player_id: string
+  player: string
+  value: number
+  date: string
+  is_this_session: boolean
+}
+
+export interface SessionReport {
+  live: boolean
+  generated_at: string
+  session: {
+    id: string
+    date: string
+    title: string | null
+    venue: string | null
+    status: SessionStatus
+    period_id: string
+    kickoff_at: string
+    started_at: string | null
+    ended_at: string | null
+    number: number
+  }
+  summary: {
+    players: number
+    goals: number
+    assists: number
+    own_goals: number
+    clean_sheets: number
+    cards: number
+    penalty_saves: number
+  }
+  attendance: {
+    present: number
+    absent: number
+    excused: number
+    early: number
+    on_time: number
+    late: number
+    very_late: number
+  }
+  matches: {
+    match_id: string
+    sequence: number
+    status: string
+    goals: number
+    own_goals: number
+    started_at: string | null
+    ended_at: string | null
+  }[]
+  players: SessionLine[]
+  best_on_the_night: {
+    player_id: string
+    player: string
+    goals: number
+    assists: number
+    contributions: number
+  } | null
+  records: {
+    kind: 'session_record'
+    metric: string
+    metric_label: string
+    player_id: string
+    player: string
+    value: number
+    first_ever: boolean
+    previous: { player: string; value: number; date: string } | null
+  }[]
+  hat_tricks: { player_id: string; player: string; goals: number; first_ever: boolean }[]
+  alltime: Record<string, SessionRankedEntry[]>
   headlines: string[]
 }

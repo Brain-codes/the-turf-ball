@@ -11,7 +11,7 @@
 import type { Ctx } from '../../_shared/router.ts'
 import { successResponse } from '../../_shared/response.ts'
 import { requireMember } from '../../_shared/auth.ts'
-import { notFound } from '../../_shared/errors.ts'
+import { notFound, unprocessable } from '../../_shared/errors.ts'
 
 export async function periodReport(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)
@@ -74,4 +74,36 @@ export async function rebuildReport(ctx: Ctx): Promise<Response> {
   if (error) throw new Error(error.message)
 
   return successResponse(data, `${period.label} rebuilt`)
+}
+
+/**
+ * Sessions filed under the wrong month — the fallout from the old rule that
+ * stamped a session with whichever month was open when it was created.
+ *
+ * Preview by default. Nothing moves until apply=true, because this re-files
+ * real recorded play and recomputes two months' totals.
+ */
+export async function repairSessionMonths(ctx: Ctx): Promise<Response> {
+  const member = await requireMember(ctx.req, ctx.db, 'owner')
+  const apply = ctx.query.get('apply') === 'true'
+
+  const { data, error } = await ctx.db.rpc('repair_session_periods', {
+    p_org: member.organizationId,
+    p_apply: apply,
+  })
+
+  if (error) throw unprocessable(error.message)
+
+  const rows = (data ?? []) as { session_date: string; filed_under: string; belongs_to: string }[]
+
+  if (rows.length === 0) {
+    return successResponse({ sessions: [], applied: apply }, 'Every session is filed under the right month')
+  }
+
+  return successResponse(
+    { sessions: rows, applied: apply },
+    apply
+      ? `Moved ${rows.length} ${rows.length === 1 ? 'session' : 'sessions'} to the month they were played in`
+      : `${rows.length} ${rows.length === 1 ? 'session is' : 'sessions are'} filed under the wrong month`,
+  )
 }

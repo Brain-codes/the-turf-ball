@@ -252,10 +252,11 @@ export function PublicPageScreen() {
             {/* Top performers */}
             <section className="mb-7">
               <SectionTitle>Leading the way</SectionTitle>
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 <TopCard icon="⚽" label="Top scorer" entry={data.top_scorer} />
                 <TopCard icon="🎯" label="Most assists" entry={data.top_assister} />
-                <TopCard icon="🧤" label="Clean sheets" entry={data.top_keeper} />
+                <TopCard icon="🛡️" label="Clean sheets" entry={data.top_keeper} />
+                <TopCard icon="🧤" label="Penalty saves" entry={data.top_penalty_stopper} />
               </div>
             </section>
 
@@ -398,6 +399,7 @@ interface PlayerStatLine {
   appearances: number
   clean_sheets: number
   saves: number
+  penalty_saves: number
   yellow_cards?: number
   red_cards?: number
   punctuality_score?: number
@@ -511,9 +513,10 @@ export function PublicPlayerScreen() {
                 <StatRow label="Own goals" value={data.stats.own_goals} />
               </StatGroup>
 
-              <StatGroup title="Playing time">
+              <StatGroup title="In goal">
                 <StatRow label="Appearances" value={data.stats.appearances} />
                 <StatRow label="Clean sheets" value={data.stats.clean_sheets} />
+                <StatRow label="Penalty saves" value={data.stats.penalty_saves} />
                 {data.stats.saves > 0 && <StatRow label="Saves" value={data.stats.saves} />}
               </StatGroup>
 

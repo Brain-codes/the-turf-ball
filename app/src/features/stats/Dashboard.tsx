@@ -173,13 +173,14 @@ export function Dashboard() {
       </section>
 
       {/* Top performers */}
-      {(data.top_scorer || data.top_assister || data.top_keeper) && (
+      {(data.top_scorer || data.top_assister || data.top_keeper || data.top_penalty_stopper) && (
         <section className="mb-7">
           <SectionTitle>Leading the way</SectionTitle>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <TopCard label="Top scorer" icon="⚽" stat={data.top_scorer} field="goals" />
             <TopCard label="Most assists" icon="🎯" stat={data.top_assister} field="assists" />
-            <TopCard label="Clean sheets" icon="🧤" stat={data.top_keeper} field="clean_sheets" />
+            <TopCard label="Clean sheets" icon="🛡️" stat={data.top_keeper} field="clean_sheets" />
+            <TopCard label="Penalty saves" icon="🧤" stat={data.top_penalty_stopper} field="penalty_saves" />
           </div>
         </section>
       )}
@@ -249,7 +250,7 @@ function TopCard({
   label: string
   icon: string
   stat: DashboardData['top_scorer']
-  field: 'goals' | 'assists' | 'clean_sheets'
+  field: 'goals' | 'assists' | 'clean_sheets' | 'penalty_saves'
 }) {
   if (!stat) {
     return (

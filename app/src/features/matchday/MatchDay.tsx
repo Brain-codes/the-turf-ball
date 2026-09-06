@@ -34,10 +34,10 @@ import { Button, Input, PlayerAvatar, PlayerName, Skeleton } from '@/components/
 import { AnimatePresence, GoalBurst, Stagger, StaggerItem, UndoToast, motion } from '@/components/motion'
 import { enqueue, flush, newClientKey, pendingCount, startAutoFlush } from '@/lib/offlineQueue'
 import { cn } from '@/lib/cn'
-import type { Match, MatchEvent, MatchPlayer, Player, Session } from '@/types'
+import type { Match, MatchEvent, MatchPlayer, OrgSettings, Player, Session } from '@/types'
 import { useAuth } from '@/features/auth/AuthProvider'
 
-type Action = 'goal' | 'yellow_card' | 'red_card' | 'own_goal'
+type Action = 'goal' | 'yellow_card' | 'red_card' | 'own_goal' | 'penalty_save' | 'clean_sheet'
 
 interface SessionDetail extends Omit<Session, 'attendance' | 'matches'> {
   attendance: { player_id: string; status: string; players?: Player }[]
@@ -859,6 +859,8 @@ interface PlayerStatRow {
   ownGoals: number
   yellowCards: number
   redCards: number
+  penaltySaves: number
+  cleanSheets: number
 }
 
 const EVENT_ICON: Record<string, string> = {
@@ -867,6 +869,8 @@ const EVENT_ICON: Record<string, string> = {
   own_goal: '🥅',
   yellow_card: '🟨',
   red_card: '🟥',
+  penalty_save: '🧤',
+  clean_sheet: '🛡️',
 }
 
 const EVENT_LABEL: Record<string, string> = {
@@ -875,6 +879,8 @@ const EVENT_LABEL: Record<string, string> = {
   own_goal: 'Own goal',
   yellow_card: 'Yellow card',
   red_card: 'Red card',
+  penalty_save: 'Penalty save',
+  clean_sheet: 'Clean sheet',
 }
 
 function LiveMatch({
@@ -907,6 +913,17 @@ function LiveMatch({
   const [viewingSquad, setViewingSquad] = useState(false)
   const [addedFeedback, setAddedFeedback] = useState<string | null>(null)
   const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null)
+
+  // Which keeper stats this group bothers with. Defaults to on while the
+  // request is in flight, so the buttons never flicker away mid-session.
+  const { data: orgSettings } = useQuery({
+    queryKey: ['org-settings', activeOrg?.id],
+    queryFn: async () => (await api.get<OrgSettings>(`organizations/${activeOrg!.id}/settings`)).data,
+    enabled: !!activeOrg,
+    staleTime: 5 * 60_000,
+  })
+  const trackCleanSheets = orgSettings?.track_clean_sheets ?? true
+  const trackPenaltySaves = orgSettings?.track_penalty_saves ?? true
 
   const startedRef = useRef(match.started_at ? new Date(match.started_at).getTime() : Date.now())
 
@@ -944,7 +961,11 @@ function LiveMatch({
     const rows = new Map<string, PlayerStatRow>()
     const ensure = (playerId: string, name: string, whatsappNickname: string | null, photoUrl: string | null) => {
       if (!rows.has(playerId)) {
-        rows.set(playerId, { playerId, name, whatsappNickname, photoUrl, goals: 0, assists: 0, ownGoals: 0, yellowCards: 0, redCards: 0 })
+        rows.set(playerId, {
+          playerId, name, whatsappNickname, photoUrl,
+          goals: 0, assists: 0, ownGoals: 0, yellowCards: 0, redCards: 0,
+          penaltySaves: 0, cleanSheets: 0,
+        })
       }
       return rows.get(playerId)!
     }
@@ -958,6 +979,8 @@ function LiveMatch({
       else if (e.event_type === 'own_goal') row.ownGoals++
       else if (e.event_type === 'yellow_card') row.yellowCards++
       else if (e.event_type === 'red_card') row.redCards++
+      else if (e.event_type === 'penalty_save') row.penaltySaves++
+      else if (e.event_type === 'clean_sheet') row.cleanSheets++
     }
     return Array.from(rows.values()).sort(
       (a, b) => (b.goals * 2 + b.assists) - (a.goals * 2 + a.assists),
@@ -1082,6 +1105,20 @@ function LiveMatch({
 
     if (action === 'yellow_card' || action === 'red_card') {
       record(action, player.id, null, `${action === 'yellow_card' ? 'Yellow' : 'Red'} — ${player.display_name}`)
+      setAction(null)
+      return
+    }
+
+    // Anyone can end up in goal in 5-a-side, so both of these are open to
+    // every player on the pitch rather than to a nominated keeper.
+    if (action === 'penalty_save') {
+      record('penalty_save', player.id, null, `Penalty saved — ${player.display_name}`)
+      setAction(null)
+      return
+    }
+
+    if (action === 'clean_sheet') {
+      record('clean_sheet', player.id, null, `Clean sheet — ${player.display_name}`)
       setAction(null)
     }
   }
@@ -1283,7 +1320,11 @@ function LiveMatch({
             >
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-xl">
-                  {action === 'goal' ? 'Who scored?' : action === 'own_goal' ? 'Own goal by?' : 'Which player?'}
+                  {action === 'goal' ? 'Who scored?'
+                    : action === 'own_goal' ? 'Own goal by?'
+                    : action === 'penalty_save' ? 'Who saved the penalty?'
+                    : action === 'clean_sheet' ? 'Who kept the clean sheet?'
+                    : 'Which player?'}
                 </h2>
                 <button onClick={() => { setAction(null); setSearch('') }} className="text-[14px] text-chalk-muted">
                   Cancel
@@ -1375,6 +1416,12 @@ function LiveMatch({
                                   {r.redCards > 0 && (
                                     <span className="text-chalk-muted">🟥 <span className="numeric font-semibold text-card-red">{r.redCards}</span></span>
                                   )}
+                                  {r.penaltySaves > 0 && (
+                                    <span className="text-chalk-muted">🧤 <span className="numeric font-semibold text-chalk">{r.penaltySaves}</span></span>
+                                  )}
+                                  {r.cleanSheets > 0 && (
+                                    <span className="text-chalk-muted">🛡️ <span className="numeric font-semibold text-chalk">{r.cleanSheets}</span></span>
+                                  )}
                                 </div>
                               </div>
                               {impact > 0 && (
@@ -1453,8 +1500,14 @@ function LiveMatch({
       {/* Action bar — always within thumb reach */}
       {!action && !scorer && (
         <div className="safe-bottom shrink-0 border-t border-pitch-700 bg-pitch-900 p-3">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <ActionButton label="Goal" icon="⚽" primary onClick={() => setAction('goal')} />
+            {trackPenaltySaves && (
+              <ActionButton label="Pen save" icon="🧤" onClick={() => setAction('penalty_save')} />
+            )}
+            {trackCleanSheets && (
+              <ActionButton label="Clean sheet" icon="🛡️" onClick={() => setAction('clean_sheet')} />
+            )}
             <ActionButton label="Yellow" icon="🟨" onClick={() => setAction('yellow_card')} />
             <ActionButton label="Red" icon="🟥" onClick={() => setAction('red_card')} />
             <ActionButton label="Own goal" icon="🥅" onClick={() => setAction('own_goal')} />

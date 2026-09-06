@@ -281,7 +281,10 @@ export function FootballSettings() {
       <div>
         <SectionTitle>Clean sheets</SectionTitle>
         <Card>
-          <Field label="Who gets credited?" hint="Football groups genuinely disagree on this one.">
+          <Field
+            label="Who gets credited?"
+            hint="This only decides who is credited automatically at full time. Anyone on the pitch can be given a clean sheet by hand while the session is live — in 5-a-side the keeper changes."
+          >
             <Select
               value={settings.clean_sheet_policy}
               onChange={(e) => update('clean_sheet_policy', e.target.value as OrgSettings['clean_sheet_policy'])}
@@ -313,6 +316,12 @@ export function FootballSettings() {
             label="Clean sheets"
             checked={settings.track_clean_sheets}
             onChange={(v) => update('track_clean_sheets', v)}
+          />
+          <Toggle
+            label="Penalty saves"
+            description="Anyone who goes in goal can be credited with one"
+            checked={settings.track_penalty_saves}
+            onChange={(v) => update('track_penalty_saves', v)}
           />
           <Toggle
             label="Guests on the table"
@@ -478,6 +487,7 @@ export function ScoringSettings() {
     goal: 'Scoring a goal',
     assist: 'Making an assist',
     clean_sheet: 'Keeping a clean sheet',
+    penalty_save: 'Saving a penalty',
     own_goal: 'Own goal',
     yellow_card: 'Yellow card',
     red_card: 'Red card',

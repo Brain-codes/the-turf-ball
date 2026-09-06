@@ -9,6 +9,7 @@ import {
   PlayerAvatar, PlayerName, SectionTitle, Select, Skeleton,
 } from '@/components/ui'
 import { FadeIn, Sheet } from '@/components/motion'
+import { SessionReport } from './SessionReport'
 import { cn } from '@/lib/cn'
 import { BAND_LABEL, countdown, fullDate, shortDate, time } from '@/lib/format'
 import { sessionCounted } from '@/types'
@@ -33,7 +34,8 @@ function formatMins(totalMinutes: number): string {
 const EVENT_LABEL: Record<string, string> = {
   goal: 'Goal', own_goal: 'Own goal', assist: 'Assist',
   yellow_card: 'Yellow card', red_card: 'Red card',
-  clean_sheet: 'Clean sheet', save: 'Save', motm: 'Man of the match',
+  clean_sheet: 'Clean sheet', penalty_save: 'Penalty save',
+  save: 'Save', motm: 'Man of the match',
 }
 
 /* -------------------------------------------------------------------------- */
@@ -458,6 +460,16 @@ export function SessionDetailScreen() {
     onSuccess: () => queryClient.invalidateQueries(),
   })
 
+  const [detailTab, setDetailTab] = useState<'summary' | 'stats'>('summary')
+
+  const [cancelError, setCancelError] = useState<string | null>(null)
+  const cancelSession = useMutation({
+    mutationFn: async () => api.post(`sessions/${id}/cancel`),
+    onSuccess: () => queryClient.invalidateQueries(),
+    onError: (err) =>
+      setCancelError(err instanceof ApiError ? err.message : 'Could not cancel this session'),
+  })
+
   if (isLoading) {
     return (
       <div className="space-y-2 px-5 pt-8">
@@ -506,6 +518,20 @@ export function SessionDetailScreen() {
         subtitle={`${time(session.kickoff_at)}${session.venue ? ` · ${session.venue}` : ''}`}
       />
 
+      <div className="mb-4 flex gap-2 px-5">
+        <DetailTab active={detailTab === 'summary'} onClick={() => setDetailTab('summary')}>
+          Summary
+        </DetailTab>
+        <DetailTab active={detailTab === 'stats'} onClick={() => setDetailTab('stats')}>
+          Full breakdown
+        </DetailTab>
+      </div>
+
+      {detailTab === 'stats' ? (
+        <div className="px-5">
+          <SessionReport sessionId={session.id} />
+        </div>
+      ) : (
       <div className="px-5">
         {session.status === 'paused' && (
           <Card className="mb-5 border-card-yellow/30 bg-card-yellow/5">
@@ -537,6 +563,36 @@ export function SessionDetailScreen() {
               No one was marked present and no matches were recorded for this session — it's
               excluded from your totals unless an admin approves it from the Sessions list.
             </p>
+          </Card>
+        )}
+
+        {session.status === 'cancelled' ? (
+          <Card className="mb-5">
+            <p className="text-[13.5px] leading-relaxed text-chalk-muted">
+              This session is cancelled. It counts for nothing — no appearances, no points, and
+              nothing recorded in it affects anybody's totals.
+            </p>
+          </Card>
+        ) : (
+          <Card className="mb-5">
+            <h3 className="text-[16px]">Didn't happen?</h3>
+            <p className="mt-1 text-[13.5px] leading-relaxed text-chalk-muted">
+              Cancel it and it counts for nothing — appearances, points and punctuality from this
+              session all come back off. Use this when a session was set up but never actually
+              played, rather than ending it, which counts it as a real match day.
+            </p>
+            {cancelError && <p className="mt-2 text-[13.5px] text-card-red">{cancelError}</p>}
+            <Button
+              variant="danger"
+              className="mt-3"
+              loading={cancelSession.isPending}
+              onClick={() => {
+                setCancelError(null)
+                cancelSession.mutate()
+              }}
+            >
+              This session never happened
+            </Button>
           </Card>
         )}
 
@@ -652,7 +708,30 @@ export function SessionDetailScreen() {
           </p>
         )}
       </div>
+      )}
     </div>
+  )
+}
+
+function DetailTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex-1 rounded-full px-4 py-2 text-[14px] font-medium transition-colors',
+        active ? 'bg-volt-400 text-void' : 'border border-pitch-700 text-chalk-muted hover:text-chalk',
+      )}
+    >
+      {children}
+    </button>
   )
 }
 

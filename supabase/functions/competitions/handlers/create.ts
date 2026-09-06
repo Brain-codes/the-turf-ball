@@ -5,7 +5,7 @@ import { successResponse } from '../../_shared/response.ts'
 import { requireMember } from '../../_shared/auth.ts'
 import { badRequest } from '../../_shared/errors.ts'
 import { int, required, str, validate } from '../../_shared/validation.ts'
-import { openPeriodId } from '../../_shared/helpers.ts'
+import { periodForDate } from '../../_shared/helpers.ts'
 
 interface Body {
   name: string
@@ -41,7 +41,8 @@ export async function createCompetition(ctx: Ctx): Promise<Response> {
     throw badRequest('Players on the pitch cannot be more than the squad size')
   }
 
-  const periodId = await openPeriodId(ctx.db, member.organizationId)
+  // Same rule as sessions: the month comes from the competition's own start date.
+  const periodId = await periodForDate(ctx.db, member.organizationId, String(body.starts_on))
 
   const { data, error } = await ctx.db
     .from('competitions')

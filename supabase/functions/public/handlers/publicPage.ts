@@ -62,6 +62,7 @@ function projectStat(row: Record<string, unknown>, page: Record<string, unknown>
     assists: row.assists,
     clean_sheets: row.clean_sheets,
     saves: row.saves,
+    penalty_saves: row.penalty_saves,
     total_points: row.total_points,
   }
   if (page.show_cards) {
@@ -85,6 +86,7 @@ function projectHistoryRow(row: Record<string, unknown>, page: Record<string, un
     assists: row.assists,
     clean_sheets: row.clean_sheets,
     saves: row.saves,
+    penalty_saves: row.penalty_saves,
     total_points: row.total_points,
   }
   if (page.show_cards) {
@@ -237,6 +239,7 @@ export async function getPublicPage(ctx: Ctx): Promise<Response> {
     top_scorer: topBy('goals'),
     top_assister: topBy('assists'),
     top_keeper: topBy('clean_sheets'),
+    top_penalty_stopper: topBy('penalty_saves'),
     sessions,
     live_session: liveSession,
     settings: {
@@ -279,7 +282,7 @@ export async function getPublicPlayer(ctx: Ctx): Promise<Response> {
 
   const { data: history } = await ctx.db
     .from('player_period_stats')
-    .select('goals, own_goals, assists, clean_sheets, saves, yellow_cards, red_cards, punctuality_score, appearances, total_points, rank, periods(label, year, month)')
+    .select('goals, own_goals, assists, clean_sheets, saves, penalty_saves, yellow_cards, red_cards, punctuality_score, appearances, total_points, rank, periods(label, year, month)')
     .eq('player_id', playerId)
     .order('computed_at', { ascending: false })
     .limit(12)

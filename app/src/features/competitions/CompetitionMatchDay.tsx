@@ -18,6 +18,8 @@ import type { Match, MatchPlayer, Player } from '@/types'
 
 const EVENT_ACTIONS = [
   { type: 'goal', label: 'Goal', icon: '⚽' },
+  { type: 'penalty_save', label: 'Pen save', icon: '🧤' },
+  { type: 'clean_sheet', label: 'Clean sheet', icon: '🛡️' },
   { type: 'own_goal', label: 'Own goal', icon: '🥅' },
   { type: 'yellow_card', label: 'Yellow', icon: '🟨' },
   { type: 'red_card', label: 'Red', icon: '🟥' },
@@ -94,7 +96,7 @@ export function CompetitionMatchDayScreen() {
 
   function handleTap(player: Player) {
     if (action === 'goal') { setScorer(player); return }
-    if (action === 'own_goal' || action === 'yellow_card' || action === 'red_card') {
+    if (action !== null) {
       record(action, player.id, null)
       setAction(null)
     }
@@ -144,7 +146,7 @@ export function CompetitionMatchDayScreen() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-4 gap-2 px-5 pt-4">
+          <div className="grid grid-cols-3 gap-2 px-5 pt-4">
             {EVENT_ACTIONS.map((a) => (
               <button
                 key={a.type}
@@ -161,7 +163,13 @@ export function CompetitionMatchDayScreen() {
           </div>
 
           {action && (
-            <p className="px-5 pt-3 text-[13px] text-chalk-muted">Tap the player who {action === 'goal' ? 'scored' : action === 'own_goal' ? "put it in their own net" : `got the ${action === 'yellow_card' ? 'yellow' : 'red'}`}.</p>
+            <p className="px-5 pt-3 text-[13px] text-chalk-muted">Tap the player who {
+              action === 'goal' ? 'scored'
+                : action === 'own_goal' ? 'put it in their own net'
+                : action === 'penalty_save' ? 'saved the penalty'
+                : action === 'clean_sheet' ? 'kept the clean sheet'
+                : `got the ${action === 'yellow_card' ? 'yellow' : 'red'}`
+            }.</p>
           )}
 
           <div className="mt-4 grid grid-cols-2 gap-3 px-5">

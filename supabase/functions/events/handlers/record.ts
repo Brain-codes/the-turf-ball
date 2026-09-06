@@ -28,7 +28,7 @@ import {
 
 const EVENT_TYPES = [
   'goal', 'own_goal', 'assist', 'yellow_card', 'red_card',
-  'clean_sheet', 'save', 'motm',
+  'clean_sheet', 'penalty_save', 'save', 'motm',
 ] as const
 
 interface RecordBody {
@@ -59,43 +59,77 @@ interface MatchContext {
  * session.ended_at, and the period comes from the competition instead.
  */
 async function loadMatch(ctx: Ctx, matchId: string, organizationId: string): Promise<MatchContext> {
-  const { data } = await ctx.db
+  // Plain lookups, walked by hand rather than one query with nested embeds.
+  // A goal in a session match must not depend on the database being able to
+  // resolve a competition relationship it has nothing to do with — when that
+  // resolution failed, every recorded goal came back as "Match not found",
+  // which sent us looking for a missing match that was sitting right there.
+  const { data, error } = await ctx.db
     .from('matches')
-    .select(`
-      id, status, ended_at,
-      sessions(id, period_id, ended_at),
-      competition_fixtures(competition_id, competitions(period_id))
-    `)
+    .select('id, status, ended_at, session_id, competition_fixture_id')
     .eq('id', matchId)
     .eq('organization_id', organizationId)
     .maybeSingle()
 
+  if (error) throw new Error(`Could not load the match: ${error.message}`)
   if (!data) throw notFound('Match not found')
-  const session = data.sessions as unknown as { id: string; period_id: string; ended_at: string | null } | null
-  const fixture = data.competition_fixtures as unknown as
-    { competition_id: string; competitions: { period_id: string } | null } | null
 
-  const periodId = session?.period_id ?? fixture?.competitions?.period_id
+  let periodId: string | null = null
+  let sessionEndedAt: string | null = null
+  let competitionId: string | null = null
+
+  if (data.session_id) {
+    const { data: session, error: sessionError } = await ctx.db
+      .from('sessions')
+      .select('id, period_id, ended_at')
+      .eq('id', data.session_id)
+      .maybeSingle()
+    if (sessionError) throw new Error(`Could not load the session: ${sessionError.message}`)
+    periodId = session?.period_id ?? null
+    sessionEndedAt = session?.ended_at ?? null
+  } else if (data.competition_fixture_id) {
+    const { data: fixture, error: fixtureError } = await ctx.db
+      .from('competition_fixtures')
+      .select('competition_id')
+      .eq('id', data.competition_fixture_id)
+      .maybeSingle()
+    if (fixtureError) throw new Error(`Could not load the fixture: ${fixtureError.message}`)
+
+    if (fixture?.competition_id) {
+      competitionId = fixture.competition_id
+      const { data: competition, error: competitionError } = await ctx.db
+        .from('competitions')
+        .select('period_id')
+        .eq('id', fixture.competition_id)
+        .maybeSingle()
+      if (competitionError) throw new Error(`Could not load the competition: ${competitionError.message}`)
+      periodId = competition?.period_id ?? null
+    }
+  }
+
   if (!periodId) throw notFound('Match has no session or competition to record against')
 
   return {
     id: data.id,
-    session_id: session?.id ?? null,
+    session_id: data.session_id ?? null,
     period_id: periodId,
-    competition_id: fixture?.competition_id ?? null,
+    competition_id: competitionId,
     status: data.status,
-    session_ended_at: session?.ended_at ?? (data.ended_at as string | null),
+    // A competition match has no session, so its own end time is the anchor
+    // for the edit window.
+    session_ended_at: sessionEndedAt ?? (data.ended_at as string | null),
   }
 }
 
 /** Which side is this player on? Needed to attribute the goal to a scoreline. */
 async function sideOf(ctx: Ctx, matchId: string, playerId: string): Promise<'a' | 'b' | null> {
-  const { data } = await ctx.db
+  const { data, error } = await ctx.db
     .from('match_players')
     .select('side')
     .eq('match_id', matchId)
     .eq('player_id', playerId)
     .maybeSingle()
+  if (error) throw new Error(`Could not check the squad: ${error.message}`)
   return (data?.side as 'a' | 'b') ?? null
 }
 
@@ -126,6 +160,25 @@ export async function recordEvent(ctx: Ctx): Promise<Response> {
     throw badRequest('That player is not in this match')
   }
 
+  // A clean sheet recorded by hand outranks whatever finishing the match would
+  // have decided automatically — in 5-a-side nobody is flagged as the keeper,
+  // so the person who tapped it is the only one who actually knows. The flag
+  // is what stops finishMatch's replace-all from wiping it (see
+  // matches/handlers/lifecycle.ts).
+  if (body.event_type === 'clean_sheet') {
+    const { data: existing } = await ctx.db
+      .from('match_events')
+      .select('id')
+      .eq('match_id', match.id)
+      .eq('player_id', body.player_id)
+      .eq('event_type', 'clean_sheet')
+      .is('voided_at', null)
+      .maybeSingle()
+    if (existing) {
+      return successResponse({ duplicate: true }, 'Already has a clean sheet for this match')
+    }
+  }
+
   const now = new Date().toISOString()
   const groupId = crypto.randomUUID()
   const isAssistedGoal = body.event_type === 'goal' && !!body.related_player_id
@@ -142,7 +195,11 @@ export async function recordEvent(ctx: Ctx): Promise<Response> {
       event_type: body.event_type,
       side,
       minute: body.minute ?? null,
-      metadata: { ...(body.metadata ?? {}), group_id: groupId },
+      metadata: {
+        ...(body.metadata ?? {}),
+        group_id: groupId,
+        ...(body.event_type === 'clean_sheet' ? { manual: true } : {}),
+      },
       client_key: body.client_key ?? null,
       created_by: member.user.id,
       created_at: now,
@@ -247,7 +304,11 @@ export async function recordBatch(ctx: Ctx): Promise<Response> {
         event_type: entry.event_type,
         side,
         minute: entry.minute ?? null,
-        metadata: { group_id: groupId, queued: true },
+        metadata: {
+          group_id: groupId,
+          queued: true,
+          ...(entry.event_type === 'clean_sheet' ? { manual: true } : {}),
+        },
         client_key: entry.client_key ?? null,
         created_by: member.user.id,
       }]

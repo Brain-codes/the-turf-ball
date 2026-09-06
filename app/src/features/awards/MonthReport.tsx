@@ -23,11 +23,12 @@ const METRIC_TITLE: Record<string, string> = {
   assists: 'Assists',
   contributions: 'Goals + assists',
   clean_sheets: 'Clean sheets',
+  penalty_saves: 'Penalty saves',
   appearances: 'Appearances',
   points: 'Points',
 }
 
-const RECORD_ORDER = ['goals', 'assists', 'contributions', 'clean_sheets', 'appearances', 'points']
+const RECORD_ORDER = ['goals', 'assists', 'contributions', 'clean_sheets', 'penalty_saves', 'appearances', 'points']
 
 export function MonthReport({ periodId }: { periodId: string }) {
   const [view, setView] = useState<'month' | 'records' | 'alltime'>('month')
@@ -159,9 +160,9 @@ function ThisMonth({ report }: { report: Report }) {
           rows={report.totals.map((t) => ({
             key: t.player_id,
             name: t.player,
-            cells: [t.goals, t.assists, t.clean_sheets, t.appearances, points(t.points)],
+            cells: [t.goals, t.assists, t.clean_sheets, t.penalty_saves, t.appearances, points(t.points)],
           }))}
-          headers={['G', 'A', 'CS', 'Apps', 'Pts']}
+          headers={['G', 'A', 'CS', 'PS', 'Apps', 'Pts']}
         />
       </section>
 
@@ -264,11 +265,11 @@ function AllTime({ report }: { report: Report }) {
       <section>
         <SectionTitle>Every member, since the beginning</SectionTitle>
         <StatsTable
-          headers={['G', 'A', 'G/A', 'Apps']}
+          headers={['G', 'A', 'G/A', 'CS', 'PS', 'Apps']}
           rows={report.alltime.table.map((t) => ({
             key: t.player_id,
             name: t.player,
-            cells: [t.goals, t.assists, t.contributions, t.appearances],
+            cells: [t.goals, t.assists, t.contributions, t.clean_sheets, t.penalty_saves, t.appearances],
           }))}
         />
       </section>

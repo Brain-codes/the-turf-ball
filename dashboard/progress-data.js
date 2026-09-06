@@ -4,8 +4,8 @@
 window.PROGRESS = {
   project: "The Turf Ball",
   tagline: "Football stats & Player of the Month, automatically",
-  updated: "24 Aug 2026",
-  currentlyDoing: "MONTHS NOW CLOSE THEMSELVES, and every month now produces a full written round-up: who turned up on each date, everyone's goals/assists/clean sheets/appearances, the awards, every record broken, milestones passed, all-time top tens, and the finished WhatsApp message ready to copy. Built and passing every automated check. The database part has NOT been applied to your live project yet — you asked to run and test it yourself.",
+  updated: "6 Sep 2026",
+  currentlyDoing: "Penalty saves and clean sheets now work the way 5-a-side actually works: nobody is a permanent goalkeeper, so both are a tap on the match day screen and either one can go to any player on the pitch. Penalty saves are a brand-new statistic and appear everywhere the other stats do. All of it has been tested against a real copy of the database — the points add up correctly — but it is NOT on your live project yet; the migration is waiting for you to push it.",
 
   // status: "done" | "doing" | "todo" | "blocked"
   phases: [
@@ -244,6 +244,20 @@ window.PROGRESS = {
         { name: "The whole month, written out", plain: "A 'Full breakdown' tab on the Awards page: attendance for every single date, who never missed one, everyone's numbers, the awards, past Players of the Month, most nominated, all-time top tens, and every member's career totals.", tech: "New GET /periods/:id/report. A closed month serves a frozen copy stored at close time so the numbers can never drift; an open month is built live and clearly marked as still to play for.", status: "done" },
         { name: "The WhatsApp message, ready to paste", plain: "The round-up your group already posts, written for you — headline records, the awards, and the goals/assists/apps list. One button copies it.", tech: "Headlines are generated in plain English in the database, so the same wording appears in the app, in the copied message, and anywhere else the report is read.", status: "done" }
       ]
+    },
+    {
+      id: 20,
+      name: "Sessions were filed under the wrong month (bug you found)",
+      plain: "You tried to record a goal in a December session and were told August was closed. The month a session belongs to was being decided at the wrong moment.",
+      status: "done",
+      starred: true,
+      tasks: [
+        { name: "The month now comes from the session's own date", plain: "A session played on 3 December belongs to December. Full stop. It used to be filed under whichever month was open when someone pressed 'create' — so a session created back in August stayed an August session forever, even though it is played in December.", tech: "New period_for_date(org, date) is now the single place that decides which month anything belongs to. Session creation, competition creation and the automatic session scheduler all use it. The old rule ('a session always belongs to the currently open month') is gone.", status: "done" },
+        { name: "The months roll forward on their own", plain: "Stop playing in September and come back in December, and the app now closes September, October and November properly — awards, report and all — and opens December, instead of quietly counting your December goals towards September.", tech: "period_for_date closes stale months in order via close_period, bounded at 60 steps. ensure_open_period now means 'the month we are actually in', so the dashboard, leaderboard and awards screens all follow. It never closes a month that has not ended, and it leaves your grace window alone.", status: "done" },
+        { name: "The week-ahead sessions bug", plain: "The app creates sessions a week in advance. One created on 28 August for a 2 September game was being filed under August — so the moment August closed, that September game could not be recorded at all. This was the same bug, and it would have bitten every single month.", tech: "The scheduler now stamps each session with period_for_date(org, its own kickoff date) rather than one month resolved once per group. A month created ahead of time sits closed until its turn, and opens automatically when the previous month closes.", status: "done" },
+        { name: "Honest error messages", plain: "A month that has not started yet no longer claims it 'has been closed'. And if it is only waiting on the previous month to finish, the app now just rolls the months forward and carries on rather than showing you an error at all.", tech: "assertPeriodOpen distinguishes closed_at set (properly closed, refuse) from closed_at null (created ahead, not yet opened) — the latter retries once through ensure_open_period and only errors if it genuinely cannot open yet.", status: "done" },
+        { name: "Repair for the sessions already filed wrong", plain: "Your existing sessions that are under the wrong month can be moved to the right one, with their goals and assists following. It shows you exactly what would move before anything changes.", tech: "repair_session_periods(org, apply) re-files sessions whose session_date falls outside their period, re-stamps match_events.period_id, and recomputes both the month they left and the month they land in. Exposed as POST /periods/repair-sessions (owner only), preview by default, ?apply=true to commit. Deliberately not run on migration.", status: "done" }
+      ]
     }
   ],
 
@@ -310,10 +324,27 @@ window.PROGRESS = {
     { time: "24 Aug 2026", text: "THE APP NOW KNOWS ITS OWN HISTORY. Every month it works out which records fell — most goals, assists, clean sheets, appearances and points in a single month — names who held the record before and with what, and spots milestones like a 50th appearance or a 100th goal contribution, saying 'first player ever' when nobody had got there before. There's a new 'Full breakdown' tab on the Awards page with attendance for every date, who never missed one, everyone's numbers, past winners, most nominated, all-time top tens, and a copy button that hands you the finished WhatsApp message.", kind: "done" },
     { time: "24 Aug 2026", text: "HOW THE NUMBERS ARE KEPT HONEST: a closed month's report is frozen the moment it closes, so it can never quietly change afterwards. An open month is worked out fresh each time you look and is clearly labelled as still to play for. Reopening a month throws its old report away rather than leaving a stale one lying around.", kind: "note" },
     { time: "24 Aug 2026", text: "NOT DONE, BEING HONEST: the new database changes have NOT been applied to your live project — you told me to stop and that you'd run and test it yourself. Until you push that migration, nothing above is active on your real data. The app side passes every type and build check, and the backend passes its code check.", kind: "issue" },
-    { time: "24 Aug 2026", text: "NOT INCLUDED, ON PURPOSE: the money side of your club report — subscriptions, walk-ins, card fines, expenses, closing balance. The app has no financial records in it at all, so that half would be a separate feature rather than something I could generate from what's already there. Say the word if you want it.", kind: "note" }
+    { time: "24 Aug 2026", text: "NOT INCLUDED, ON PURPOSE: the money side of your club report — subscriptions, walk-ins, card fines, expenses, closing balance. The app has no financial records in it at all, so that half would be a separate feature rather than something I could generate from what's already there. Say the word if you want it.", kind: "note" },
+    { time: "24 Aug 2026", text: "YOU FOUND A REAL BUG, and it was worse than the error suggested. Recording a goal in a December session was refused with \"August 2026 has been closed\". The cause: a session was being filed under whichever month happened to be OPEN when it was created, rather than the month it is actually played in. So a session created back in August stayed an August session forever. Fixed properly — the month now comes from the session's own date, every time.", kind: "issue" },
+    { time: "24 Aug 2026", text: "THE SAME BUG WOULD HAVE HIT YOU EVERY MONTH. The app creates sessions a week ahead, so one created on 28 August for a 2 September game was filed under August — and the moment August closed, that September game became unrecordable. Also fixed: stop playing for a few months and come back, and the app now properly closes the months you missed and opens the one you are in, instead of counting your December goals towards September.", kind: "issue" },
+    { time: "24 Aug 2026", text: "FOR YOUR EXISTING DATA: there's a repair that moves sessions already filed under the wrong month, taking their goals and assists with them and rebuilding the totals for both months. It shows you exactly what would move first and changes nothing until you say go. It does NOT run by itself when you push — re-filing real recorded play is your call, not a side effect of a deploy.", kind: "note" },,
+    {
+      id: 21,
+      name: "Penalty saves and clean sheets — for whoever actually went in goal",
+      plain: "In 5-a-side there is no permanent keeper. Whoever goes in goal for ten minutes and stops a penalty now gets the credit for it, and so does whoever was between the sticks at full time. Both are a tap on match day, open to every player on the pitch.",
+      status: "done",
+      starred: true,
+      tasks: [
+        { name: "Penalty saves are a real statistic now", plain: "A new 'Pen save' button on the match day screen. Tap it, tap the player, done. It counts towards their points, shows on the stat board while you're playing, on their profile, on the league table, in the monthly round-up and on the public page.", tech: "New penalty_save event type, penalty_saves column on player_period_stats, threaded through recompute_period_stats, player_stats_breakdown, the all-time views, the global leaderboard and build_period_report. Worth 3 points by default, editable in Settings -> Scoring.", status: "done" },
+        { name: "Anyone can be given a clean sheet", plain: "Clean sheets used to be worked out only at full time, and only for a nominated goalkeeper — which nobody ever sets, because the keeper changes every few minutes. There's now a 'Clean sheet' button that credits any player on the pitch, and it sticks.", tech: "Manually recorded clean sheets carry metadata.manual and are excluded from the replace-all that finishMatch and resumeMatch do when they re-decide the automatic awards. A unique index stops the same player getting two in one match.", status: "done" },
+        { name: "Shown everywhere the other stats are", plain: "Home screen top cards, the league table breakdown, a player's profile, the live stat board, the monthly report tables, the public share page and the global leaderboard all carry penalty saves alongside clean sheets.", tech: "top_penalty_stopper added to the dashboard and public page payloads; penalty_saves added to every stats projection, both global leaderboard sort lists and the monthly report's month, records, milestone and career tables.", status: "done" },
+        { name: "You can turn it off", plain: "Settings -> Football has a Penalty saves toggle next to Clean sheets. Turn it off and the button disappears from match day.", tech: "New track_penalty_saves setting, default on. The match day recorder reads org settings and hides the Pen save and Clean sheet buttons when their toggle is off.", status: "done" }
+      ]
+    }
   ],
 
   blockers: [
+    "Penalty saves and clean sheets are built and fully tested against a scratch copy of the database, but the migration has NOT been run on your live project yet. Nothing about them is active until that push happens.",
     "The automatic month-closing and the full monthly breakdown are built but NOT applied to your live database yet — you asked to run the migration and test it yourself. Nothing about them is active until that push happens.",
     "Not yet tried by a human: recording an actual goal on match day, opening the public share link, deleting an account and logging back in to undo it, and the new attendance-first live view. All are built, deployed and pass every automated check, but none has been driven by a real person yet.",
     "The live-view \"add player\" fix and new Squad list (17 Aug) haven't been clicked through by you yet — you asked to test it yourself rather than have it driven for you.",
@@ -324,7 +355,8 @@ window.PROGRESS = {
 
   decisions: [
     { q: "Product name", a: "The Turf Ball — used throughout. Say the word and I'll change it.", open: true },
-    { q: "Clean sheets: goalkeeper only, or the whole defending side?", a: "Built as a setting — defaults to goalkeeper only, change it in Settings → Football", open: false },
+    { q: "Clean sheets: goalkeeper only, or the whole defending side?", a: "Built as a setting — defaults to goalkeeper only, change it in Settings → Football. As of 6 Sep that setting only decides who gets credited AUTOMATICALLY at full time; anyone on the pitch can be given a clean sheet by hand during the session.", open: false },
+    { q: "Should penalty saves be separate from ordinary saves?", a: "My call: yes, separate. The database already had a general 'save' that nothing has ever recorded and nothing displays. Penalty saves are the moment your group actually argues about, so they got their own statistic rather than being lumped in. Worth 3 points by default — say the word if that should be higher or lower.", open: true },
     { q: "Do one-off guest players count on the leaderboard?", a: "Built as a setting — defaults to yes, toggle in Settings → Football", open: false },
     { q: "Voting for Player of the Month in the first version?", a: "No — first version ranks on statistics only", open: false },
     { q: "What happens if you try to log in more than 30 days after deleting your account?", a: "My call, not yet confirmed: treated as if the account no longer exists (blocked with a clear message), since the daily cleanup job should already have removed it for real by then.", open: true },

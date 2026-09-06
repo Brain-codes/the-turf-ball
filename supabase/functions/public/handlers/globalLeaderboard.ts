@@ -9,8 +9,8 @@ import type { Ctx } from '../../_shared/router.ts'
 import { paginate, successResponse } from '../../_shared/response.ts'
 import { pageParams } from '../../_shared/helpers.ts'
 
-const PLAYER_SORT_FIELDS = ['goals', 'assists', 'appearances', 'clean_sheets', 'saves'] as const
-const TEAM_SORT_FIELDS = ['goals', 'assists', 'appearances', 'clean_sheets'] as const
+const PLAYER_SORT_FIELDS = ['goals', 'assists', 'appearances', 'clean_sheets', 'penalty_saves', 'saves'] as const
+const TEAM_SORT_FIELDS = ['goals', 'assists', 'appearances', 'clean_sheets', 'penalty_saves'] as const
 
 function resolveSort<T extends readonly string[]>(fields: T, requested: string | null, fallback: T[number]): T[number] {
   return (fields as readonly string[]).includes(requested ?? '') ? (requested as T[number]) : fallback
@@ -58,6 +58,7 @@ export async function getGlobalPlayers(ctx: Ctx): Promise<Response> {
     own_goals: r.own_goals,
     assists: r.assists,
     clean_sheets: r.clean_sheets,
+    penalty_saves: r.penalty_saves,
     saves: r.saves,
   }))
 
@@ -93,6 +94,7 @@ export async function getGlobalTeams(ctx: Ctx): Promise<Response> {
     own_goals: r.own_goals,
     assists: r.assists,
     clean_sheets: r.clean_sheets,
+    penalty_saves: r.penalty_saves,
     saves: r.saves,
   }))
 

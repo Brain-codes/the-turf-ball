@@ -109,10 +109,11 @@ export function LeaderboardScreen() {
                         transition={{ duration: 0.22 }}
                         className="overflow-hidden bg-void/60"
                       >
-                        <div className="grid grid-cols-3 gap-3 px-4 py-4 text-center sm:grid-cols-6">
+                        <div className="grid grid-cols-3 gap-3 px-4 py-4 text-center sm:grid-cols-7">
                           <Breakdown label="Goals" value={row.goals} />
                           <Breakdown label="Assists" value={row.assists} />
                           <Breakdown label="Clean sheets" value={row.clean_sheets} />
+                          <Breakdown label="Pen saves" value={row.penalty_saves} />
                           <Breakdown label="Yellows" value={row.yellow_cards} />
                           <Breakdown label="Reds" value={row.red_cards} />
                           <Breakdown label="Punctuality" value={points(row.punctuality_score)} />

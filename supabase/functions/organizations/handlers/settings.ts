@@ -8,6 +8,7 @@ const POLICIES = ['goalkeeper', 'whole_side', 'manual'] as const
 
 const FIELDS = [
   'clean_sheet_policy', 'track_punctuality', 'track_cards', 'track_clean_sheets',
+  'track_penalty_saves',
   'guests_on_leaderboard', 'early_before_mins', 'on_time_after_mins', 'late_after_mins',
   'early_points', 'on_time_points', 'late_points', 'very_late_points', 'voting_enabled',
   'auto_close_months', 'auto_close_grace_days',
@@ -27,6 +28,7 @@ export async function updateSettings(ctx: Ctx): Promise<Response> {
     track_punctuality: [bool],
     track_cards: [bool],
     track_clean_sheets: [bool],
+    track_penalty_saves: [bool],
     guests_on_leaderboard: [bool],
     early_before_mins: [num(0, 240)],
     on_time_after_mins: [num(0, 240)],

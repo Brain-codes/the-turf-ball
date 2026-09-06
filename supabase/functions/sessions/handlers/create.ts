@@ -3,7 +3,7 @@ import { successResponse } from '../../_shared/response.ts'
 import { requireMember } from '../../_shared/auth.ts'
 import { required, str, validate } from '../../_shared/validation.ts'
 import { badRequest } from '../../_shared/errors.ts'
-import { assertPeriodOpen, openPeriodId } from '../../_shared/helpers.ts'
+import { assertPeriodOpen, periodForDate } from '../../_shared/helpers.ts'
 
 export async function createSession(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)
@@ -21,9 +21,12 @@ export async function createSession(ctx: Ctx): Promise<Response> {
     throw badRequest('That kick-off time is not valid')
   }
 
-  // A session always belongs to the currently open month. It can never be
-  // filed into a closed one.
-  const periodId = await openPeriodId(ctx.db, member.organizationId)
+  // A session belongs to the month it is PLAYED in, worked out from its own
+  // kick-off — not from whichever month happens to be open when someone
+  // presses "create". Booking on 28 August for 2 September files it under
+  // September, and any finished months in between close themselves on the way.
+  const sessionDate = kickoff.toISOString().slice(0, 10)
+  const periodId = await periodForDate(ctx.db, member.organizationId, sessionDate)
   await assertPeriodOpen(ctx.db, periodId)
 
   const { data: org } = await ctx.db

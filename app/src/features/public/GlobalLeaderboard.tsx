@@ -43,6 +43,7 @@ interface GlobalPlayerRow {
   own_goals: number
   assists: number
   clean_sheets: number
+  penalty_saves: number
   saves: number
 }
 
@@ -54,6 +55,7 @@ interface GlobalTeamRow {
   own_goals: number
   assists: number
   clean_sheets: number
+  penalty_saves: number
   saves: number
 }
 
@@ -69,6 +71,7 @@ const PLAYER_COLUMNS: Column<GlobalPlayerRow>[] = [
   { key: 'goals', label: 'Goals', short: 'G', value: (r) => r.goals },
   { key: 'assists', label: 'Assists', short: 'A', value: (r) => r.assists },
   { key: 'clean_sheets', label: 'Clean sheets', short: 'CS', value: (r) => r.clean_sheets },
+  { key: 'penalty_saves', label: 'Penalty saves', short: 'PS', value: (r) => r.penalty_saves },
   { key: 'saves', label: 'Saves', short: 'SV', value: (r) => r.saves },
 ]
 
@@ -77,6 +80,7 @@ const TEAM_COLUMNS: Column<GlobalTeamRow>[] = [
   { key: 'goals', label: 'Goals', short: 'GF', value: (r) => r.goals },
   { key: 'assists', label: 'Assists', short: 'A', value: (r) => r.assists },
   { key: 'clean_sheets', label: 'Clean sheets', short: 'CS', value: (r) => r.clean_sheets },
+  { key: 'penalty_saves', label: 'Penalty saves', short: 'PS', value: (r) => r.penalty_saves },
 ]
 
 export function GlobalLeaderboardScreen() {

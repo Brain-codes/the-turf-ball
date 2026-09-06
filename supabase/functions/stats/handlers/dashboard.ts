@@ -55,9 +55,10 @@ export async function dashboard(ctx: Ctx): Promise<Response> {
       goals: acc.goals + (s.goals ?? 0),
       assists: acc.assists + (s.assists ?? 0),
       clean_sheets: acc.clean_sheets + (s.clean_sheets ?? 0),
+      penalty_saves: acc.penalty_saves + (s.penalty_saves ?? 0),
       cards: acc.cards + (s.yellow_cards ?? 0) + (s.red_cards ?? 0),
     }),
-    { goals: 0, assists: 0, clean_sheets: 0, cards: 0 },
+    { goals: 0, assists: 0, clean_sheets: 0, penalty_saves: 0, cards: 0 },
   )
 
   const topBy = (field: string) => {
@@ -74,6 +75,7 @@ export async function dashboard(ctx: Ctx): Promise<Response> {
     top_scorer: topBy('goals'),
     top_assister: topBy('assists'),
     top_keeper: topBy('clean_sheets'),
+    top_penalty_stopper: topBy('penalty_saves'),
     recent_sessions: recentSessions ?? [],
     live_session: liveSession ?? null,
   })
