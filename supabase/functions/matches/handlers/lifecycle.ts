@@ -6,7 +6,6 @@ import { assertOwned, requireMember } from '../../_shared/auth.ts'
 import { notFound } from '../../_shared/errors.ts'
 import {
   broadcast,
-  orgSettings,
   recomputeStats,
   refreshMatchScore,
 } from '../../_shared/helpers.ts'
@@ -43,22 +42,14 @@ export async function startMatch(ctx: Ctx): Promise<Response> {
  * zero even though the players never left the pitch. Reusing the same match
  * keeps the clock, events and roster exactly where they were.
  *
- * Clean sheets awarded at the earlier finish were only ever provisional
- * against that moment's score — cleared here and re-decided at the next
- * real finish, same as finishMatch already does when called twice. A clean
- * sheet somebody recorded by hand is not provisional and survives.
+ * Clean sheets are untouched. They are no longer derived from the scoreline
+ * at any moment — every one of them is a deliberate tap by whoever was
+ * watching the goal, so there is nothing here that can be re-decided.
  */
 export async function resumeMatch(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)
   const matchId = ctx.segments[0]
   await assertOwned(ctx.db, 'matches', matchId, member.organizationId)
-
-  await ctx.db
-    .from('match_events')
-    .delete()
-    .eq('match_id', matchId)
-    .eq('event_type', 'clean_sheet')
-    .filter('metadata->>manual', 'is', null)
 
   const { data, error } = await ctx.db
     .from('matches')
@@ -76,20 +67,23 @@ export async function resumeMatch(ctx: Ctx): Promise<Response> {
 }
 
 /**
- * Finish a match and settle clean sheets.
+ * Finish a match.
  *
- * Who gets a clean sheet is a genuine disagreement between football groups, so
- * it is a setting rather than a hard-coded rule:
- *   goalkeeper  — only the keeper of a side that conceded nothing
- *   whole_side  — every player on that side
- *   manual      — exactly who the organizer names
+ * Clean sheets are deliberately NOT decided here any more. A session is played
+ * as a run of short sets with sides re-forming and the keeper rotating between
+ * them, but the whole session is a single `matches` row with everyone on one
+ * squad — so there is no scoreline this code could read that would mean "the
+ * keeper conceded nothing in that set". The only thing that knows is the
+ * person on the touchline, who taps it in per set as it happens.
+ *
+ * The old rule read `is_goalkeeper` off the roster, which no screen has ever
+ * set, so it credited nobody under the default policy and credited literally
+ * everyone under `whole_side`. Both were wrong against hand-recorded counts.
  */
 export async function finishMatch(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)
   const matchId = ctx.segments[0]
   await assertOwned(ctx.db, 'matches', matchId, member.organizationId)
-
-  const body = await ctx.body<{ clean_sheets?: string[] }>()
 
   const { data: match } = await ctx.db
     .from('matches')
@@ -102,80 +96,6 @@ export async function finishMatch(ctx: Ctx): Promise<Response> {
   const session = match.sessions as { id: string; period_id: string }
 
   await refreshMatchScore(ctx.db, matchId)
-
-  const { data: fresh } = await ctx.db
-    .from('matches')
-    .select('side_a_score, side_b_score')
-    .eq('id', matchId)
-    .single()
-
-  const settings = await orgSettings(ctx.db, member.organizationId)
-
-  if (settings.track_clean_sheets) {
-    const { data: roster } = await ctx.db
-      .from('match_players')
-      .select('player_id, side, is_goalkeeper')
-      .eq('match_id', matchId)
-
-    // Anyone can go in goal in 5-a-side, so a clean sheet tapped in during the
-    // match is the only reliable signal there is. Those rows are left exactly
-    // as they are and excluded from the automatic decision below.
-    const { data: manual } = await ctx.db
-      .from('match_events')
-      .select('player_id')
-      .eq('match_id', matchId)
-      .eq('event_type', 'clean_sheet')
-      .is('voided_at', null)
-      .filter('metadata->>manual', 'eq', 'true')
-
-    const manualPlayerIds = new Set((manual ?? []).map((m) => m.player_id as string))
-
-    let awarded: { player_id: string; side: 'a' | 'b' }[] = []
-
-    if (settings.clean_sheet_policy === 'manual') {
-      const named = new Set(body.clean_sheets ?? [])
-      awarded = (roster ?? [])
-        .filter((r) => named.has(r.player_id))
-        .map((r) => ({ player_id: r.player_id, side: r.side }))
-    } else {
-      // A side kept a clean sheet if the opposition scored nothing.
-      const sidesWithCleanSheet: ('a' | 'b')[] = []
-      if ((fresh?.side_b_score ?? 0) === 0) sidesWithCleanSheet.push('a')
-      if ((fresh?.side_a_score ?? 0) === 0) sidesWithCleanSheet.push('b')
-
-      awarded = (roster ?? [])
-        .filter((r) => sidesWithCleanSheet.includes(r.side))
-        .filter((r) => settings.clean_sheet_policy === 'whole_side' || r.is_goalkeeper)
-        .map((r) => ({ player_id: r.player_id, side: r.side }))
-    }
-
-    // Replace rather than append, so finishing a match twice cannot double up.
-    // Only the automatic awards are replaced — a manual one is a decision, not
-    // a derivation, and re-finishing must not silently undo it.
-    await ctx.db
-      .from('match_events')
-      .delete()
-      .eq('match_id', matchId)
-      .eq('event_type', 'clean_sheet')
-      .filter('metadata->>manual', 'is', null)
-
-    awarded = awarded.filter((a) => !manualPlayerIds.has(a.player_id))
-
-    if (awarded.length > 0) {
-      await ctx.db.from('match_events').insert(
-        awarded.map((a) => ({
-          organization_id: member.organizationId,
-          match_id: matchId,
-          session_id: session.id,
-          period_id: session.period_id,
-          player_id: a.player_id,
-          event_type: 'clean_sheet',
-          side: a.side,
-          created_by: member.user.id,
-        })),
-      )
-    }
-  }
 
   const { data: updated, error } = await ctx.db
     .from('matches')

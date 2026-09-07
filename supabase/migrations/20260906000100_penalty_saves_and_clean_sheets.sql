@@ -8,8 +8,14 @@
 -- recorder taps for any player on the pitch.
 --
 --   * penalty_saves — a brand-new counted event and stat column.
---   * clean sheets  — still auto-awarded by policy, but a manually recorded
---                     one now survives a match being finished (and re-finished).
+--   * clean sheets  — no longer derived from the scoreline at full time. A
+--                     session is a run of short sets with the keeper rotating
+--                     between them; keep five sets clean and that is five
+--                     clean sheets, recorded by hand, one tap each.
+--
+-- clean_sheet_policy on org_settings is left in place but is now unread. The
+-- rule it drove keyed off match_players.is_goalkeeper, which no screen has
+-- ever set, so it credited nobody by default and everybody under 'whole_side'.
 -- ---------------------------------------------------------------------------
 
 -- 1. Stat cache column -------------------------------------------------------
@@ -20,12 +26,13 @@ alter table public.player_period_stats
 alter table public.org_settings
   add column if not exists track_penalty_saves boolean not null default true;
 
--- 3. A player cannot keep two clean sheets in the same match. The auto-award
---    path already replaces rather than appends; this stops a double tap on the
---    new manual button from doing what the auto path is careful not to.
-create unique index if not exists match_events_one_clean_sheet_per_match
-  on public.match_events(match_id, player_id)
-  where event_type = 'clean_sheet' and voided_at is null;
+-- 3. Deliberately NOT constrained to one per match.
+--    A 5-a-side session is a run of short games — first to two, winner stays
+--    on — but the product models the whole session as a single `matches` row
+--    with everyone on one squad. There is no per-game unit to hang a clean
+--    sheet on, so a clean sheet is simply a countable tap: go in goal three
+--    times, keep three clean sheets, tap it three times. Any uniqueness rule
+--    here would silently cap a keeper at one per session.
 
 -- 4. Default scoring weight for new groups ----------------------------------
 create or replace function public.seed_default_scoring_rules(p_org uuid)

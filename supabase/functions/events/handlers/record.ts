@@ -160,25 +160,14 @@ export async function recordEvent(ctx: Ctx): Promise<Response> {
     throw badRequest('That player is not in this match')
   }
 
-  // A clean sheet recorded by hand outranks whatever finishing the match would
-  // have decided automatically — in 5-a-side nobody is flagged as the keeper,
-  // so the person who tapped it is the only one who actually knows. The flag
-  // is what stops finishMatch's replace-all from wiping it (see
-  // matches/handlers/lifecycle.ts).
-  if (body.event_type === 'clean_sheet') {
-    const { data: existing } = await ctx.db
-      .from('match_events')
-      .select('id')
-      .eq('match_id', match.id)
-      .eq('player_id', body.player_id)
-      .eq('event_type', 'clean_sheet')
-      .is('voided_at', null)
-      .maybeSingle()
-    if (existing) {
-      return successResponse({ duplicate: true }, 'Already has a clean sheet for this match')
-    }
-  }
-
+  // Clean sheets stack on purpose. A session is played as a run of short sets
+  // with sides re-forming and the keeper rotating between them; keep five sets
+  // clean and that is five clean sheets. The app does not model sets at all,
+  // and the whole session is one `matches` row, so the only honest reading of
+  // a second tap is a second clean sheet — never a duplicate to swallow.
+  // Nothing derives them from the scoreline, so nothing overwrites them
+  // either. Offline-queue idempotency is unaffected: that is client_key's
+  // job, and a genuine retry carries the same one.
   const now = new Date().toISOString()
   const groupId = crypto.randomUUID()
   const isAssistedGoal = body.event_type === 'goal' && !!body.related_player_id

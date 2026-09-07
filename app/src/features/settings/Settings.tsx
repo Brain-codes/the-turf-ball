@@ -281,19 +281,15 @@ export function FootballSettings() {
       <div>
         <SectionTitle>Clean sheets</SectionTitle>
         <Card>
-          <Field
-            label="Who gets credited?"
-            hint="This only decides who is credited automatically at full time. Anyone on the pitch can be given a clean sheet by hand while the session is live — in 5-a-side the keeper changes."
-          >
-            <Select
-              value={settings.clean_sheet_policy}
-              onChange={(e) => update('clean_sheet_policy', e.target.value as OrgSettings['clean_sheet_policy'])}
-            >
-              <option value="goalkeeper">Just the goalkeeper</option>
-              <option value="whole_side">Everyone on the defending team</option>
-              <option value="manual">I'll pick each time</option>
-            </Select>
-          </Field>
+          <p className="text-[13.5px] leading-relaxed text-chalk-muted">
+            You record these yourself, as they happen. Tap <span className="text-chalk">Clean sheet</span> on
+            the match day screen and pick whoever was in goal for that set — anyone can go in goal, so it is
+            never limited to a nominated keeper.
+          </p>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-chalk-muted">
+            Record one for every set they keep clean. Five sets without conceding is five clean sheets, and
+            they all count towards points and the Golden Glove.
+          </p>
         </Card>
       </div>
 

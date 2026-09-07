@@ -1,0 +1,21 @@
+-- ---------------------------------------------------------------------------
+-- Drop the one-clean-sheet-per-match rule.
+--
+-- 20260906000100 created this index on the assumption that a clean sheet was a
+-- once-per-game thing. It is not. A session is played as a run of short sets
+-- with sides re-forming and the keeper rotating between them — keep five sets
+-- clean and that is five clean sheets — but the whole session is a single
+-- `matches` row, so "once per match" silently meant "once per session". The
+-- second and every later clean sheet of the night was rejected.
+--
+-- The app models no sets, rounds or teams, so a clean sheet is simply a
+-- countable tap and taps must stack. There is no uniqueness rule that can be
+-- correct here. Idempotency for the offline queue is unaffected: that is
+-- match_events_client_key_uniq's job, and a genuine retry carries the same
+-- client_key.
+--
+-- 20260906000100 was edited to remove the CREATE, so a database built from
+-- scratch never gets this index; this migration is what removes it from one
+-- that already ran the original.
+-- ---------------------------------------------------------------------------
+drop index if exists public.match_events_one_clean_sheet_per_match;
