@@ -422,7 +422,7 @@ function PlayersStep({
   })
 
   async function addPlayer() {
-    if (form.first_name.trim().length < 1) return
+    if (form.first_name.trim().length < 1 || !form.position) return
     setSaving(true)
     setError(null)
     try {
@@ -432,7 +432,7 @@ function PlayersStep({
         display_name: form.display_name.trim() || undefined,
         whatsapp_nickname: form.whatsapp_nickname.trim() || undefined,
         preferred_foot: form.preferred_foot || undefined,
-        position: form.position || undefined,
+        position: form.position,
         photo_base64,
       })
       onPlayerAdded(data)
@@ -484,11 +484,13 @@ function PlayersStep({
             </Select>
           </Field>
         </div>
-        <Field label="Position" hint="Optional">
+        <Field label="Position" hint="Decides what their goals and assists are worth">
           <PositionSelect
             value={form.position}
             onChange={(e) => setForm({ ...form, position: e.target.value })}
-          />
+          >
+            <option value="" disabled>Pick a position</option>
+          </PositionSelect>
         </Field>
         <Field label="WhatsApp nickname" hint="Optional — the name they go by in the group chat">
           <Input
@@ -509,7 +511,7 @@ function PlayersStep({
         <Button
           fullWidth
           loading={saving}
-          disabled={form.first_name.trim().length < 1}
+          disabled={form.first_name.trim().length < 1 || !form.position}
           onClick={addPlayer}
         >
           Add player

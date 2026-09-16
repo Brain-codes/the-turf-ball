@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/services/client'
-import { Button, Input, PlayerAvatar, PlayerName, Skeleton } from '@/components/ui'
+import { Button, Input, PlayerAvatar, PlayerName, PositionSelect, Skeleton } from '@/components/ui'
 import { AnimatePresence, GoalBurst, Stagger, StaggerItem, UndoToast, motion } from '@/components/motion'
 import { enqueue, flush, newClientKey, pendingCount, startAutoFlush } from '@/lib/offlineQueue'
 import { cn } from '@/lib/cn'
@@ -466,6 +466,7 @@ function AttendanceStep({
   const [addingPlayer, setAddingPlayer] = useState(false)
   const [newName, setNewName] = useState('')
   const [newOneTime, setNewOneTime] = useState(false)
+  const [newPosition, setNewPosition] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [extraPlayers, setExtraPlayers] = useState<Player[]>([])
   const [starting, setStarting] = useState(false)
@@ -519,6 +520,7 @@ function AttendanceStep({
     mutationFn: async () => {
       const { data } = await api.post<Player>('players', {
         first_name: newName.trim(),
+        position: newPosition,
         // One-timers land as 'guest' — they show up today and are markable
         // for attendance/goals like anyone else, but stay out of the
         // regular squad list and league totals (see Settings > league table).
@@ -529,6 +531,7 @@ function AttendanceStep({
     onSuccess: async (player) => {
       setExtraPlayers((prev) => [...prev, player])
       setNewName('')
+      setNewPosition('')
       setNewOneTime(false)
       setAddingPlayer(false)
       await markPresent(player.id)
@@ -623,18 +626,25 @@ function AttendanceStep({
               <Button
                 size="sm"
                 loading={addPlayer.isPending}
-                disabled={newName.trim().length < 1}
+                disabled={newName.trim().length < 1 || !newPosition}
                 onClick={() => addPlayer.mutate()}
               >
                 Add
               </Button>
               <button
-                onClick={() => { setAddingPlayer(false); setNewName(''); setNewOneTime(false) }}
+                onClick={() => { setAddingPlayer(false); setNewName(''); setNewPosition(''); setNewOneTime(false) }}
                 className="text-[13px] text-chalk-muted"
               >
                 Cancel
               </button>
             </div>
+            <PositionSelect
+              aria-label="Their position"
+              value={newPosition}
+              onChange={(e) => setNewPosition(e.target.value)}
+            >
+              <option value="" disabled>Their position</option>
+            </PositionSelect>
             <OneTimeToggle checked={newOneTime} onChange={setNewOneTime} />
           </div>
         ) : (
@@ -908,6 +918,7 @@ function LiveMatch({
   const [addingLateBusy, setAddingLateBusy] = useState(false)
   const [addingLateError, setAddingLateError] = useState<string | null>(null)
   const [lateNewName, setLateNewName] = useState('')
+  const [lateNewPosition, setLateNewPosition] = useState('')
   const [lateOneTime, setLateOneTime] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [viewingSquad, setViewingSquad] = useState(false)
@@ -1154,6 +1165,7 @@ function LiveMatch({
       setViewingSquad(false)
       setLateSearch('')
       setLateNewName('')
+      setLateNewPosition('')
       setLateOneTime(false)
       setAddedFeedback(`${player.display_name} added to the pitch`)
       setTimeout(() => setAddedFeedback((current) => (current === `${player.display_name} added to the pitch` ? null : current)), 2500)
@@ -1190,12 +1202,13 @@ function LiveMatch({
 
   /** Someone not in the squad database at all yet — create them, then add them same as any latecomer. */
   async function createAndAddLatecomer() {
-    if (lateNewName.trim().length < 1) return
+    if (lateNewName.trim().length < 1 || !lateNewPosition) return
     setAddingLateBusy(true)
     setAddingLateError(null)
     try {
       const { data: player } = await api.post<Player>('players', {
         first_name: lateNewName.trim(),
+        position: lateNewPosition,
         status: lateOneTime ? 'guest' : undefined,
       })
       await addLatecomer(player)
@@ -1534,6 +1547,7 @@ function LiveMatch({
                   setAddingLate(false)
                   setLateSearch('')
                   setLateNewName('')
+                  setLateNewPosition('')
                   setLateOneTime(false)
                   setAddingLateError(null)
                 }}
@@ -1592,12 +1606,19 @@ function LiveMatch({
                 <Button
                   size="sm"
                   loading={addingLateBusy}
-                  disabled={lateNewName.trim().length < 1}
+                  disabled={lateNewName.trim().length < 1 || !lateNewPosition}
                   onClick={createAndAddLatecomer}
                 >
                   Add
                 </Button>
               </div>
+              <PositionSelect
+                aria-label="Their position"
+                value={lateNewPosition}
+                onChange={(e) => setLateNewPosition(e.target.value)}
+              >
+                <option value="" disabled>Their position</option>
+              </PositionSelect>
               <OneTimeToggle checked={lateOneTime} onChange={setLateOneTime} />
             </div>
           </div>

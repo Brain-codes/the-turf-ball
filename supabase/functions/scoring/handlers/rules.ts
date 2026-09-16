@@ -112,3 +112,81 @@ export async function updateRules(ctx: Ctx): Promise<Response> {
 
   return successResponse(data ?? [], 'Scoring updated and the table recalculated')
 }
+
+/* ---------------------------------------------------------------------------
+ * Position points — what a goal or an assist is worth for each line
+ * (forwards, midfielders, defenders, keepers). Only counts in a month whose
+ * positional_scoring switch is on.
+ * ------------------------------------------------------------------------- */
+
+const LINES = ['FWD', 'MID', 'DEF', 'GK'] as const
+
+export async function getPositionPoints(ctx: Ctx): Promise<Response> {
+  const member = await requireMember(ctx.req, ctx.db)
+  const requestedPeriod = ctx.query.get('period_id')
+
+  let periodFilter: string | null = null
+  if (requestedPeriod) {
+    const { data: frozen } = await ctx.db
+      .from('position_points')
+      .select('id')
+      .eq('organization_id', member.organizationId)
+      .eq('period_id', requestedPeriod)
+      .limit(1)
+    if (frozen && frozen.length > 0) periodFilter = requestedPeriod
+  }
+
+  let q = ctx.db
+    .from('position_points')
+    .select('line, event_type, points')
+    .eq('organization_id', member.organizationId)
+
+  q = periodFilter ? q.eq('period_id', periodFilter) : q.is('period_id', null)
+
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+
+  return successResponse(data ?? [], 'Position points', { frozen: periodFilter !== null })
+}
+
+export async function updatePositionPoints(ctx: Ctx): Promise<Response> {
+  const member = await requireMember(ctx.req, ctx.db, 'owner')
+  const body = await ctx.body<{
+    points: { line: string; event_type: string; points: number }[]
+  }>()
+
+  validate(body as unknown as Record<string, unknown>, { points: [required, isArray(1, 8)] })
+
+  for (const p of body.points) {
+    if (!LINES.includes(p.line as typeof LINES[number])) throw badRequest('Unknown position group')
+    if (p.event_type !== 'goal' && p.event_type !== 'assist') throw badRequest('Only goals and assists vary by position')
+    if (typeof p.points !== 'number' || !Number.isFinite(p.points) || Math.abs(p.points) > 100) {
+      throw badRequest('Points must be a number between -100 and 100')
+    }
+  }
+
+  // Every group is seeded with all eight rows, so this is always an update.
+  for (const p of body.points) {
+    const { error } = await ctx.db
+      .from('position_points')
+      .update({ points: p.points })
+      .eq('organization_id', member.organizationId)
+      .is('period_id', null)
+      .eq('line', p.line)
+      .eq('event_type', p.event_type)
+    if (error) throw new Error(error.message)
+  }
+
+  const period = await resolvePeriod(ctx.db, member.organizationId)
+  await recomputeStats(ctx.db, period.id)
+
+  await audit(ctx.db, member.organizationId, member.user.id, 'scoring.position_points', 'organization', member.organizationId, null, body)
+
+  const { data } = await ctx.db
+    .from('position_points')
+    .select('line, event_type, points')
+    .eq('organization_id', member.organizationId)
+    .is('period_id', null)
+
+  return successResponse(data ?? [], 'Position points saved and the table recalculated')
+}

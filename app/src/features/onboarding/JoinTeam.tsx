@@ -53,7 +53,7 @@ export function JoinTeamScreen() {
           display_name: form.display_name.trim() || undefined,
           whatsapp_nickname: form.whatsapp_nickname.trim() || undefined,
           preferred_foot: form.preferred_foot || undefined,
-          position: form.position || undefined,
+          position: form.position,
           photo_base64,
         },
       })
@@ -110,11 +110,13 @@ export function JoinTeamScreen() {
                 {FEET.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
               </Select>
             </Field>
-            <Field label="Position" hint="Optional">
+            <Field label="Position" hint="Decides what your goals and assists are worth">
               <PositionSelect
                 value={form.position}
                 onChange={(e) => setForm({ ...form, position: e.target.value })}
-              />
+              >
+                <option value="" disabled>Pick a position</option>
+              </PositionSelect>
             </Field>
             <Field label="WhatsApp nickname" hint="Optional — the name you go by in the group chat">
               <Input
@@ -138,7 +140,7 @@ export function JoinTeamScreen() {
               size="lg"
               fullWidth
               loading={busy}
-              disabled={form.first_name.trim().length < 1}
+              disabled={form.first_name.trim().length < 1 || !form.position}
               onClick={submit}
             >
               Request to join

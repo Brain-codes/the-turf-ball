@@ -37,11 +37,14 @@ export async function resolvePeriod(
   db: SupabaseClient,
   organizationId: string,
   requested?: string | null,
-): Promise<{ id: string; label: string; status: string; year: number; month: number }> {
+): Promise<{
+  id: string; label: string; status: string; year: number; month: number
+  positional_scoring: boolean; attendance_tracking: boolean
+}> {
   if (requested) {
     const { data, error } = await db
       .from('periods')
-      .select('id, label, status, year, month')
+      .select('id, label, status, year, month, positional_scoring, attendance_tracking')
       .eq('id', requested)
       .eq('organization_id', organizationId)
       .maybeSingle()
@@ -53,7 +56,7 @@ export async function resolvePeriod(
   const id = await openPeriodId(db, organizationId)
   const { data, error } = await db
     .from('periods')
-    .select('id, label, status, year, month')
+    .select('id, label, status, year, month, positional_scoring, attendance_tracking')
     .eq('id', id)
     .single()
   if (error) throw new Error(error.message)
@@ -129,6 +132,20 @@ export function bandArrival(
   if (minutesLate <= s.on_time_after_mins) return { band: 'on_time', points: s.on_time_points }
   if (minutesLate <= s.late_after_mins) return { band: 'late', points: s.late_points }
   return { band: 'very_late', points: s.very_late_points }
+}
+
+/**
+ * Whether a month judges arrival times. A per-month switch — see
+ * 20260916000000_position_points_and_month_switches.sql.
+ */
+export async function attendanceTracking(db: SupabaseClient, periodId: string): Promise<boolean> {
+  const { data, error } = await db
+    .from('periods')
+    .select('attendance_tracking')
+    .eq('id', periodId)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return data?.attendance_tracking ?? true
 }
 
 export async function orgSettings(db: SupabaseClient, organizationId: string) {

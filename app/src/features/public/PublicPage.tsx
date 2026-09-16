@@ -132,6 +132,12 @@ export function PublicPageScreen() {
             )}
             {!isOpen && <Badge>Final</Badge>}
           </div>
+          {data.period.positional_scoring && (
+            <p className="mt-3 text-[12.5px] text-chalk-muted">
+              Position points this month: goals and assists by midfielders, defenders and keepers
+              are worth more.
+            </p>
+          )}
         </header>
       </FadeIn>
 

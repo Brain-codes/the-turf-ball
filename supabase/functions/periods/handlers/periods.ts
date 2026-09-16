@@ -2,7 +2,8 @@ import type { Ctx } from '../../_shared/router.ts'
 import { successResponse } from '../../_shared/response.ts'
 import { requireMember } from '../../_shared/auth.ts'
 import { notFound, unprocessable } from '../../_shared/errors.ts'
-import { broadcast, openPeriodId } from '../../_shared/helpers.ts'
+import { audit, broadcast, openPeriodId, recomputeStats } from '../../_shared/helpers.ts'
+import { bool, validate } from '../../_shared/validation.ts'
 
 export async function listPeriods(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db)
@@ -118,4 +119,50 @@ export async function reopenPeriod(ctx: Ctx): Promise<Response> {
     { period_id: periodId },
     `${period.label} is open again. The awards for that month have been cleared.`,
   )
+}
+
+/**
+ * The two per-month switches: position-based points and attendance tracking.
+ * Both totals are always stored, so flipping either one just recomputes the
+ * month and the table follows. A closed month keeps what it was scored under.
+ */
+export async function updateSwitches(ctx: Ctx): Promise<Response> {
+  const member = await requireMember(ctx.req, ctx.db, 'owner')
+  const periodId = ctx.segments[0]
+
+  const body = await ctx.body<{ positional_scoring?: boolean; attendance_tracking?: boolean }>()
+  validate(body as unknown as Record<string, unknown>, {
+    positional_scoring: [bool],
+    attendance_tracking: [bool],
+  })
+
+  const { data: period } = await ctx.db
+    .from('periods')
+    .select('id, label, status')
+    .eq('id', periodId)
+    .eq('organization_id', member.organizationId)
+    .maybeSingle()
+
+  if (!period) throw notFound('Month not found')
+  if (period.status === 'closed') {
+    throw unprocessable(`${period.label} is closed. Reopen it first to change how it's scored.`)
+  }
+
+  const patch: Record<string, boolean> = {}
+  if (body.positional_scoring !== undefined) patch.positional_scoring = body.positional_scoring
+  if (body.attendance_tracking !== undefined) patch.attendance_tracking = body.attendance_tracking
+
+  const { data, error } = await ctx.db
+    .from('periods')
+    .update(patch)
+    .eq('id', periodId)
+    .select('*')
+    .single()
+  if (error) throw new Error(error.message)
+
+  await recomputeStats(ctx.db, periodId)
+  await audit(ctx.db, member.organizationId, member.user.id, 'period.switches', 'period', periodId, null, patch)
+  await broadcast(ctx.db, member.organizationId, periodId, 'stats.updated', { period_id: periodId })
+
+  return successResponse(data, `${period.label} updated and the table recalculated`)
 }

@@ -51,9 +51,12 @@ export function LeaderboardScreen() {
       />
 
       <div className="px-5">
-        {data?.period?.status === 'closed' && (
-          <div className="mb-4">
-            <Badge>Final — this month is closed</Badge>
+        {(data?.period?.status === 'closed' || data?.period?.positional_scoring) && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {data?.period?.status === 'closed' && <Badge>Final — this month is closed</Badge>}
+            {data?.period?.positional_scoring && (
+              <Badge tone="volt">Position points — goals and assists from further back are worth more</Badge>
+            )}
           </div>
         )}
 

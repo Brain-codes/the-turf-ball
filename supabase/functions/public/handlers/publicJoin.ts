@@ -33,7 +33,8 @@ export async function joinTeam(ctx: Ctx): Promise<Response> {
     display_name: [str(1, 40)],
     whatsapp_nickname: [str(0, 40)],
     preferred_foot: [oneOf(FEET)],
-    position: [oneOf(POSITIONS)],
+    // Position decides what a goal or assist is worth, so it's asked up front.
+    position: [required, oneOf(POSITIONS)],
   })
 
   const { data: org, error: orgErr } = await ctx.db
@@ -61,7 +62,7 @@ export async function joinTeam(ctx: Ctx): Promise<Response> {
       display_name: body.display_name ? String(body.display_name).trim() : firstName,
       whatsapp_nickname: body.whatsapp_nickname ? String(body.whatsapp_nickname).trim() : null,
       preferred_foot: body.preferred_foot ?? null,
-      position: body.position ?? null,
+      position: body.position,
       photo_url: photoUrl,
       status: 'pending',
       created_by: null,

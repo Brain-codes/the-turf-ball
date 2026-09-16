@@ -103,7 +103,7 @@ async function resolvePublicPeriod(ctx: Ctx, organizationId: string, requested: 
   if (requested) {
     const { data } = await ctx.db
       .from('periods')
-      .select('id, label, status, year, month')
+      .select('id, label, status, year, month, positional_scoring')
       .eq('id', requested)
       .eq('organization_id', organizationId)
       .maybeSingle()
@@ -111,7 +111,7 @@ async function resolvePublicPeriod(ctx: Ctx, organizationId: string, requested: 
   }
   const { data } = await ctx.db
     .from('periods')
-    .select('id, label, status, year, month')
+    .select('id, label, status, year, month, positional_scoring')
     .eq('organization_id', organizationId)
     .order('year', { ascending: false })
     .order('month', { ascending: false })

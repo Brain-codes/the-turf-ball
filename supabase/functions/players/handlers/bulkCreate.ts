@@ -1,7 +1,12 @@
 import type { Ctx } from '../../_shared/router.ts'
 import { successResponse } from '../../_shared/response.ts'
 import { requireMember } from '../../_shared/auth.ts'
+import { badRequest } from '../../_shared/errors.ts'
 import { isArray, required, validate } from '../../_shared/validation.ts'
+
+const POSITIONS = [
+  'GK', 'RB', 'CB', 'LB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF',
+] as const
 
 /**
  * Onboarding's fast path: type a name, press enter, repeat. Nobody is filling
@@ -9,15 +14,22 @@ import { isArray, required, validate } from '../../_shared/validation.ts'
  */
 export async function bulkCreatePlayers(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db, 'admin')
-  const body = await ctx.body<{ names: string[] }>()
+  const body = await ctx.body<{ players: { name: string; position: string }[] }>()
 
   validate(body as unknown as Record<string, unknown>, {
-    names: [required, isArray(1, 200)],
+    players: [required, isArray(1, 200)],
   })
 
-  const cleaned = body.names
-    .map((n) => String(n ?? '').trim())
-    .filter((n) => n.length > 0 && n.length <= 40)
+  // Every player needs a position — it decides what their goals are worth.
+  const entries = body.players
+    .map((p) => ({ name: String(p?.name ?? '').trim(), position: String(p?.position ?? '') }))
+    .filter((p) => p.name.length > 0 && p.name.length <= 40)
+
+  const missing = entries.find((p) => !POSITIONS.includes(p.position as typeof POSITIONS[number]))
+  if (missing) throw badRequest(`Pick a position for ${missing.name}`)
+
+  const positionOf = new Map(entries.map((p) => [p.name.toLowerCase(), p.position]))
+  const cleaned = entries.map((p) => p.name)
 
   if (cleaned.length === 0) {
     return successResponse([], 'No names to add')
@@ -41,6 +53,7 @@ export async function bulkCreatePlayers(ctx: Ctx): Promise<Response> {
         first_name: parts[0],
         last_name: parts.length > 1 ? parts.slice(1).join(' ') : null,
         display_name: name,
+        position: positionOf.get(name.toLowerCase()),
         status: 'active' as const,
         created_by: member.user.id,
       }

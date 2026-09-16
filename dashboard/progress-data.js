@@ -4,8 +4,8 @@
 window.PROGRESS = {
   project: "The Turf Ball",
   tagline: "Football stats & Player of the Month, automatically",
-  updated: "6 Sep 2026",
-  currentlyDoing: "Penalty saves and clean sheets now work the way 5-a-side actually works: nobody is a permanent goalkeeper, so both are a tap on the match day screen and either one can go to any player on the pitch. Penalty saves are a brand-new statistic and appear everywhere the other stats do. All of it has been tested against a real copy of the database — the points add up correctly — but it is NOT on your live project yet; the migration is waiting for you to push it.",
+  updated: "16 Sep 2026",
+  currentlyDoing: "Fairer points for defenders and midfielders, plus the option to switch attendance off. A goal or assist is now worth more the further back the scorer plays, and both options can be switched on or off for each month under Settings, Points. Tested on a copy of the database and the points add up. Now live on your project. Not yet clicked through by a person.",
 
   // status: "done" | "doing" | "todo" | "blocked"
   phases: [
@@ -340,10 +340,18 @@ window.PROGRESS = {
         { name: "Shown everywhere the other stats are", plain: "Home screen top cards, the league table breakdown, a player's profile, the live stat board, the monthly report tables, the public share page and the global leaderboard all carry penalty saves alongside clean sheets.", tech: "top_penalty_stopper added to the dashboard and public page payloads; penalty_saves added to every stats projection, both global leaderboard sort lists and the monthly report's month, records, milestone and career tables.", status: "done" },
         { name: "You can turn it off", plain: "Settings -> Football has a Penalty saves toggle next to Clean sheets. Turn it off and the button disappears from match day.", tech: "New track_penalty_saves setting, default on. The match day recorder reads org settings and hides the Pen save and Clean sheet buttons when their toggle is off.", status: "done" }
       ]
-    }
+    },
+    { time: "16 Sep 2026", text: "YOU ASKED: defenders were getting too few points, because forwards standing near goal always score more. Built: goals and assists now pay by position. Using your live values (goal 5, assist 3) as the starting point: forwards 5 and 3, midfielders 6 and 3, defenders 7 and 4, keepers the same as defenders, as you asked. Every number can be changed under Settings, Points. Clean sheets are unchanged: still yours to give, to anyone.", kind: "done" },
+    { time: "16 Sep 2026", text: "SWITCH IT ON OR OFF, MONTH BY MONTH: Settings, Points now has a month picker with two switches. 'Position points' changes how that month is scored. 'Track attendance' off means nobody is marked late; everyone who played gets the early-arrival points, and Most Punctual isn't awarded that month. Both scores are always worked out in the background, so switching one just changes which score shows, and switching back loses nothing. A new month starts with the previous month's settings. A closed month is locked with the settings it was scored under.", kind: "done" },
+    { time: "16 Sep 2026", text: "POSITION IS NOW REQUIRED when a player is added: quick add (a position picker next to each name), full details, the onboarding wizard, the self-join invite link, and both 'someone just arrived' forms on match day. Admins can change a player's position when editing them, but can't clear it. Changing it re-scores the current month only; closed months keep the position they were scored with.", kind: "done" },
+    { time: "16 Sep 2026", text: "HEADS UP: 32 of your players have no position yet. Until one is set, they get forward points. Set their positions from each player's Edit screen.", kind: "note" },
+    { time: "16 Sep 2026", text: "TESTED on a copy of the database with a forward, a midfielder, a defender, a keeper and a player with no position, each scoring once and assisting once. Position points on: the keeper and the defender moved above the forward, and every total matched the hand calculation. Attendance off: everyone got the 2 early-arrival points and Most Punctual wasn't awarded. Closing the month froze its points and position groups, the next month copied its switches, and reopening cleared the frozen points. The app type-checks and builds cleanly.", kind: "done" },
+    { time: "16 Sep 2026", text: "NOT LIVE YET: applying the database change to your live project was blocked by a safety check and needs your OK. The server updates must go out after that database change, so they haven't been released either.", kind: "issue" },
+    { time: "16 Sep 2026", text: "NOW LIVE (your go-ahead): the database change is on your project, every group has its 8 position values, and September is set to position points OFF and attendance ON until you change them. The server updates are out, and the new settings routes answer and turn away anyone who isn't logged in.", kind: "done" },
   ],
 
   blockers: [
+    "Position points and the monthly attendance switch are live but haven't been clicked through by a person yet. 32 players still need a position set.",
     "Penalty saves and clean sheets are built and fully tested against a scratch copy of the database, but the migration has NOT been run on your live project yet. Nothing about them is active until that push happens.",
     "The automatic month-closing and the full monthly breakdown are built but NOT applied to your live database yet — you asked to run the migration and test it yourself. Nothing about them is active until that push happens.",
     "Not yet tried by a human: recording an actual goal on match day, opening the public share link, deleting an account and logging back in to undo it, and the new attendance-first live view. All are built, deployed and pass every automated check, but none has been driven by a real person yet.",

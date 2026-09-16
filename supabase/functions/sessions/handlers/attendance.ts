@@ -11,7 +11,7 @@ import { successResponse } from '../../_shared/response.ts'
 import { assertOwned, requireMember } from '../../_shared/auth.ts'
 import { notFound } from '../../_shared/errors.ts'
 import { isArray, required, validate } from '../../_shared/validation.ts'
-import { bandArrival, orgSettings, recomputeStats, touchSessionActivity } from '../../_shared/helpers.ts'
+import { attendanceTracking, bandArrival, orgSettings, recomputeStats, touchSessionActivity } from '../../_shared/helpers.ts'
 
 interface Entry {
   player_id: string
@@ -38,6 +38,7 @@ export async function setAttendance(ctx: Ctx): Promise<Response> {
   if (!session) throw notFound('Session not found')
 
   const settings = await orgSettings(ctx.db, member.organizationId)
+  const tracking = await attendanceTracking(ctx.db, session.period_id)
   // Punctuality is judged against when the session actually kicked off, not
   // the scheduled time — a group that starts 30 minutes late shouldn't make
   // everyone who showed up on time "late". Falls back to the scheduled time
@@ -51,8 +52,9 @@ export async function setAttendance(ctx: Ctx): Promise<Response> {
     let points = 0
 
     // Punctuality only applies to people who actually turned up, and only if
-    // the group tracks it.
-    if (status === 'present' && settings.track_punctuality) {
+    // the month tracks it. With it off, the engine credits everyone who played
+    // as early, so there is nothing to band here.
+    if (status === 'present' && tracking) {
       // Default arrival to now: the organizer is ticking people off as they
       // walk in, so "now" is almost always the right answer.
       const arrived = entry.arrived_at ? new Date(entry.arrived_at) : new Date()
@@ -127,7 +129,7 @@ export async function startSession(ctx: Ctx): Promise<Response> {
 
   if (!existing.actual_kickoff_at) {
     const settings = await orgSettings(ctx.db, member.organizationId)
-    if (settings.track_punctuality) {
+    if (await attendanceTracking(ctx.db, existing.period_id)) {
       const { data: present } = await ctx.db
         .from('session_attendance')
         .select('id, arrived_at')

@@ -679,42 +679,66 @@ function AddPlayersSheet({
 
 function QuickAddForm({ onDone }: { onDone: () => void }) {
   const [names, setNames] = useState('')
+  const [positions, setPositions] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
 
+  const list = names.split('\n').map((n) => n.trim()).filter(Boolean)
+  const missing = list.filter((n) => !positions[n]).length
+
   const mutation = useMutation({
-    mutationFn: async (list: string[]) => api.post('players/bulk', { names: list }),
+    mutationFn: async () =>
+      api.post('players/bulk', { players: list.map((name) => ({ name, position: positions[name] })) }),
     onSuccess: () => {
       setNames('')
+      setPositions({})
       onDone()
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not add those players'),
   })
 
-  const list = names.split('\n').map((n) => n.trim()).filter(Boolean)
-
   return (
     <>
       <p className="mb-3 text-[14px] text-chalk-muted">
-        One name per line. Shirt numbers, positions and photos can come later.
+        One name per line, then pick each player's position — it decides what their goals and
+        assists are worth. Shirt numbers and photos can come later.
       </p>
       <textarea
         value={names}
         onChange={(e) => setNames(e.target.value)}
-        rows={7}
+        rows={5}
         autoFocus
         placeholder={'Ade\nMike\nJohn'}
         className="w-full resize-none rounded-xl border border-pitch-700 bg-pitch-900 p-3.5 text-[16px] leading-8 text-chalk placeholder:text-chalk-faint focus:border-turf-400 focus:outline-none"
       />
+      {list.length > 0 && (
+        <div className="mt-3 divide-y divide-pitch-700 rounded-xl border border-pitch-700 bg-pitch-900 px-3.5">
+          {list.map((name, i) => (
+            <div key={`${name}-${i}`} className="flex items-center gap-3 py-2">
+              <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">{name}</span>
+              <PositionSelect
+                aria-label={`Position for ${name}`}
+                value={positions[name] ?? ''}
+                onChange={(e) => setPositions((p) => ({ ...p, [name]: e.target.value }))}
+                className="h-10 w-44 text-[14px]"
+              >
+                <option value="" disabled>Pick position</option>
+              </PositionSelect>
+            </div>
+          ))}
+        </div>
+      )}
       {error && <p className="mt-2 text-[14px] text-card-red">{error}</p>}
       <Button
         size="lg"
         fullWidth
         className="mt-4"
         loading={mutation.isPending}
-        disabled={list.length === 0}
-        onClick={() => mutation.mutate(list)}
+        disabled={list.length === 0 || missing > 0}
+        onClick={() => mutation.mutate()}
       >
-        Add {list.length > 0 ? `${list.length} player${list.length === 1 ? '' : 's'}` : 'players'}
+        {missing > 0 && list.length > 0
+          ? `Pick ${missing} more position${missing === 1 ? '' : 's'}`
+          : `Add ${list.length > 0 ? `${list.length} player${list.length === 1 ? '' : 's'}` : 'players'}`}
       </Button>
     </>
   )
@@ -739,7 +763,7 @@ function FullAddForm({ onDone }: { onDone: () => void }) {
         display_name: form.display_name.trim() || undefined,
         whatsapp_nickname: form.whatsapp_nickname.trim() || undefined,
         preferred_foot: form.preferred_foot || undefined,
-        position: form.position || undefined,
+        position: form.position,
         photo_base64,
       })
     },
@@ -778,11 +802,13 @@ function FullAddForm({ onDone }: { onDone: () => void }) {
           </Select>
         </Field>
       </div>
-      <Field label="Position" hint="Optional">
+      <Field label="Position" hint="Decides what their goals and assists are worth">
         <PositionSelect
           value={form.position}
           onChange={(e) => setForm({ ...form, position: e.target.value })}
-        />
+        >
+          <option value="" disabled>Pick a position</option>
+        </PositionSelect>
       </Field>
       <Field label="WhatsApp nickname" hint="Optional — the name they go by in the group chat">
         <Input
@@ -804,10 +830,10 @@ function FullAddForm({ onDone }: { onDone: () => void }) {
         size="lg"
         fullWidth
         loading={mutation.isPending}
-        disabled={form.first_name.trim().length < 1}
+        disabled={form.first_name.trim().length < 1 || !form.position}
         onClick={() => mutation.mutate()}
       >
-        Add player
+        {form.position ? 'Add player' : 'Pick a position to add'}
       </Button>
     </div>
   )
@@ -1019,7 +1045,9 @@ function EditPlayerSheet({
         display_name: form.display_name,
         whatsapp_nickname: form.whatsapp_nickname.trim() || null,
         jersey_number: form.jersey_number === '' ? null : Number(form.jersey_number),
-        position: form.position || null,
+        // Can be changed, never cleared — older players without one just
+        // keep none until an admin picks it.
+        position: form.position || undefined,
         status: form.status,
       }),
     onSuccess: onSaved,
@@ -1052,11 +1080,13 @@ function EditPlayerSheet({
               placeholder="—"
             />
           </Field>
-          <Field label="Position">
+          <Field label="Position" hint="Sets their goal and assist points">
             <PositionSelect
               value={form.position}
               onChange={(e) => setForm({ ...form, position: e.target.value })}
-            />
+            >
+              <option value="" disabled>Pick a position</option>
+            </PositionSelect>
           </Field>
         </div>
 

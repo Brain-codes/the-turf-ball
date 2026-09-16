@@ -24,7 +24,8 @@ export async function createPlayer(ctx: Ctx): Promise<Response> {
     display_name: [str(1, 40)],
     whatsapp_nickname: [str(0, 40)],
     jersey_number: [int(0, 99)],
-    position: [oneOf(POSITIONS)],
+    // Position decides what a goal or assist is worth, so it's asked up front.
+    position: [required, oneOf(POSITIONS)],
     preferred_foot: [oneOf(FEET)],
     status: [oneOf(STATUSES)],
   })
@@ -45,7 +46,7 @@ export async function createPlayer(ctx: Ctx): Promise<Response> {
       display_name: body.display_name ? String(body.display_name).trim() : firstName,
       whatsapp_nickname: body.whatsapp_nickname ? String(body.whatsapp_nickname).trim() : null,
       jersey_number: body.jersey_number ?? null,
-      position: body.position ?? null,
+      position: body.position,
       preferred_foot: body.preferred_foot ?? null,
       photo_url: photoUrl,
       status: body.status ?? 'active',

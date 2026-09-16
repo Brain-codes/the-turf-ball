@@ -1,8 +1,9 @@
 import type { Ctx } from '../../_shared/router.ts'
 import { successResponse } from '../../_shared/response.ts'
 import { assertOwned, requireMember } from '../../_shared/auth.ts'
-import { conflict } from '../../_shared/errors.ts'
+import { badRequest, conflict } from '../../_shared/errors.ts'
 import { int, oneOf, str, validate } from '../../_shared/validation.ts'
+import { openPeriodId, recomputeStats } from '../../_shared/helpers.ts'
 
 const POSITIONS = [
   'GK', 'RB', 'CB', 'LB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF',
@@ -32,6 +33,11 @@ export async function updatePlayer(ctx: Ctx): Promise<Response> {
     status: [oneOf(STATUSES)],
   })
 
+  // A position can be changed but never cleared — it sets a player's points.
+  if ('position' in body && (body.position === null || body.position === '')) {
+    throw badRequest('Pick a position for this player')
+  }
+
   const patch: Record<string, unknown> = {}
   for (const f of FIELDS) if (body[f] !== undefined) patch[f] = body[f]
 
@@ -46,6 +52,12 @@ export async function updatePlayer(ctx: Ctx): Promise<Response> {
   if (error) {
     if (error.code === '23505') throw conflict('Another player already has that shirt number')
     throw new Error(error.message)
+  }
+
+  // A new position changes what their goals and assists are worth this month.
+  // Closed months keep the position they were scored with.
+  if (patch.position !== undefined) {
+    await recomputeStats(ctx.db, await openPeriodId(ctx.db, member.organizationId))
   }
 
   return successResponse(data, 'Player updated')

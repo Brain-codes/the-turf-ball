@@ -129,8 +129,21 @@ export interface PlayerStats {
   punctuality_score: number
   vote_points: number
   total_points: number
+  /** Flat points, ignoring position. */
+  standard_points?: number
+  /** Points with goals/assists weighted by position line. */
+  positional_points?: number
+  position_line?: PositionLine | null
   rank: number | null
   players?: Player
+}
+
+export type PositionLine = 'FWD' | 'MID' | 'DEF' | 'GK'
+
+export interface PositionPoint {
+  line: PositionLine
+  event_type: 'goal' | 'assist'
+  points: number
 }
 
 export interface Period {
@@ -145,6 +158,10 @@ export interface Period {
   closed_automatically?: boolean
   auto_close_blocked_at?: string | null
   auto_close_blocked_reason?: string | null
+  /** Goals and assists are worth more the further back the player plays. */
+  positional_scoring?: boolean
+  /** Off = nobody is judged on arrival; everyone who played counts as early. */
+  attendance_tracking?: boolean
 }
 
 export interface Session {

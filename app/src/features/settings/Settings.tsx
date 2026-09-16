@@ -11,6 +11,7 @@ import {
 } from '@/components/ui'
 import { FadeIn } from '@/components/motion'
 import { cn } from '@/lib/cn'
+import { MonthSwitches, PositionPointsEditor } from './ScoringSwitches'
 import type { Competition, DeleteAccountPreview, MemberRow, Organization, OrgSettings, ScoringPreset, ScoringRule } from '@/types'
 
 function IconGroup(props: SVGProps<SVGSVGElement>) {
@@ -297,12 +298,6 @@ export function FootballSettings() {
         <SectionTitle>What you track</SectionTitle>
         <Card className="divide-y divide-pitch-700 py-0">
           <Toggle
-            label="Punctuality"
-            description="Reward players who arrive on time"
-            checked={settings.track_punctuality}
-            onChange={(v) => update('track_punctuality', v)}
-          />
-          <Toggle
             label="Cards"
             description="Yellow and red cards count against points"
             checked={settings.track_cards}
@@ -360,32 +355,31 @@ export function FootballSettings() {
         )}
       </div>
 
-      {settings.track_punctuality && (
-        <div>
-          <SectionTitle>Punctuality windows</SectionTitle>
-          <Card className="space-y-3">
-            <p className="text-[13px] leading-relaxed text-chalk-muted">
-              Measured against each session's own kick-off time, whichever slot it was booked from.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Early if this many minutes before">
-                <Input
-                  type="number"
-                  value={settings.early_before_mins}
-                  onChange={(e) => update('early_before_mins', Number(e.target.value))}
-                />
-              </Field>
-              <Field label="Late after this many minutes">
-                <Input
-                  type="number"
-                  value={settings.on_time_after_mins}
-                  onChange={(e) => update('on_time_after_mins', Number(e.target.value))}
-                />
-              </Field>
-            </div>
-          </Card>
-        </div>
-      )}
+      <div>
+        <SectionTitle>Punctuality windows</SectionTitle>
+        <Card className="space-y-3">
+          <p className="text-[13px] leading-relaxed text-chalk-muted">
+            Measured against each session's own kick-off time, whichever slot it was booked from.
+            Attendance is switched on or off for each month under Points.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Early if this many minutes before">
+              <Input
+                type="number"
+                value={settings.early_before_mins}
+                onChange={(e) => update('early_before_mins', Number(e.target.value))}
+              />
+            </Field>
+            <Field label="Late after this many minutes">
+              <Input
+                type="number"
+                value={settings.on_time_after_mins}
+                onChange={(e) => update('on_time_after_mins', Number(e.target.value))}
+              />
+            </Field>
+          </div>
+        </Card>
+      </div>
     </FadeIn>
   )
 }
@@ -501,6 +495,10 @@ export function ScoringSettings() {
         </p>
       </Card>
 
+      <MonthSwitches />
+
+      <PositionPointsEditor />
+
       <div>
         <SectionTitle>Start from a preset</SectionTitle>
         <div className="space-y-2">
@@ -519,6 +517,9 @@ export function ScoringSettings() {
 
       <div>
         <SectionTitle>Or set each one yourself</SectionTitle>
+        <p className="mb-2 text-[13px] leading-relaxed text-chalk-muted">
+          Goal and assist here are for months with Position points off.
+        </p>
         <Card className="divide-y divide-pitch-700 py-0">
           {rules.map((rule, index) => (
             <div key={rule.id} className="flex items-center gap-3 py-3">
