@@ -108,7 +108,7 @@ export function MonthSwitches() {
 /* -------------------------------------------------------------------------- */
 
 const LINES: { line: PositionLine; label: string; hint: string }[] = [
-  { line: 'FWD', label: 'Forwards', hint: 'Wingers, strikers — and anyone with no position' },
+  { line: 'FWD', label: 'Forwards', hint: 'Wingers and strikers' },
   { line: 'MID', label: 'Midfielders', hint: 'Defensive, centre, attacking, wide mids' },
   { line: 'DEF', label: 'Defenders', hint: 'Full backs and centre backs' },
   { line: 'GK', label: 'Goalkeepers', hint: 'Registered keepers' },
@@ -194,8 +194,8 @@ export function PositionPointsEditor() {
         </div>
       </Card>
       <p className="mt-2 text-[13px] leading-relaxed text-chalk-muted">
-        Only used in months with Position points switched on. Clean sheets stay the same for
-        everyone. A player's position is set when they join and can be changed by an admin.
+        Only used in months with Position points switched on. Players with no position get the
+        normal goal and assist points below. Clean sheets stay the same for everyone. A player's position is set when they join and can be changed by an admin.
       </p>
       {error && <p className="mt-2 text-[14px] text-card-red">{error}</p>}
       <Button

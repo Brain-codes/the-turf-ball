@@ -133,7 +133,7 @@ export interface PlayerStats {
   standard_points?: number
   /** Points with goals/assists weighted by position line. */
   positional_points?: number
-  position_line?: PositionLine | null
+  position_line?: PositionLine | 'NONE' | null
   rank: number | null
   players?: Player
 }
