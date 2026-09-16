@@ -11,7 +11,7 @@ import {
 } from '@/components/ui'
 import { FadeIn } from '@/components/motion'
 import { cn } from '@/lib/cn'
-import { MonthSwitches, PositionPointsEditor } from './ScoringSwitches'
+import { GoalAssistPoints, MonthSwitches } from './ScoringSwitches'
 import type { Competition, DeleteAccountPreview, MemberRow, Organization, OrgSettings, ScoringPreset, ScoringRule } from '@/types'
 
 function IconGroup(props: SVGProps<SVGSVGElement>) {
@@ -439,6 +439,9 @@ export function CompetitionSettings() {
 
 /* -------------------------------------------------------------------------- */
 
+// Goal and assist are edited in GoalAssistPoints, alongside the position values.
+const GOAL_ASSIST = new Set(['goal', 'assist'])
+
 export function ScoringSettings() {
   const { activeOrg } = useAuth()
   const queryClient = useQueryClient()
@@ -497,7 +500,7 @@ export function ScoringSettings() {
 
       <MonthSwitches />
 
-      <PositionPointsEditor />
+      <GoalAssistPoints />
 
       <div>
         <SectionTitle>Start from a preset</SectionTitle>
@@ -516,12 +519,9 @@ export function ScoringSettings() {
       </div>
 
       <div>
-        <SectionTitle>Or set each one yourself</SectionTitle>
-        <p className="mb-2 text-[13px] leading-relaxed text-chalk-muted">
-          Goal and assist here are for months with Position points off.
-        </p>
+        <SectionTitle>Everything else</SectionTitle>
         <Card className="divide-y divide-pitch-700 py-0">
-          {rules.map((rule, index) => (
+          {rules.map((rule, index) => GOAL_ASSIST.has(rule.event_type) ? null : (
             <div key={rule.id} className="flex items-center gap-3 py-3">
               <span className="min-w-0 flex-1 text-[15px] text-chalk">
                 {LABELS[rule.event_type] ?? rule.event_type}
@@ -546,7 +546,7 @@ export function ScoringSettings() {
         size="lg"
         fullWidth
         loading={save.isPending}
-        onClick={() => save.mutate({ rules: rules.map((r) => ({ event_type: r.event_type, points: r.points, enabled: r.enabled })) })}
+        onClick={() => save.mutate({ rules: rules.filter((r) => !GOAL_ASSIST.has(r.event_type)).map((r) => ({ event_type: r.event_type, points: r.points, enabled: r.enabled })) })}
       >
         {saved ? 'Saved — table updated ✓' : 'Save points'}
       </Button>

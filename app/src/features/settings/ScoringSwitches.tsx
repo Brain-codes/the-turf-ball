@@ -4,7 +4,7 @@ import { RiArrowLeftSLine, RiArrowRightSLine } from '@remixicon/react'
 import { api, ApiError } from '@/services/client'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { Badge, Button, Card, SectionTitle, Skeleton, Toggle } from '@/components/ui'
-import type { Period, PositionLine, PositionPoint } from '@/types'
+import type { Period, PositionLine, PositionPoint, ScoringRule } from '@/types'
 
 /* -------------------------------------------------------------------------- */
 /* Per-month switches: position points and attendance tracking.               */
@@ -114,12 +114,19 @@ const LINES: { line: PositionLine; label: string; hint: string }[] = [
   { line: 'GK', label: 'Goalkeepers', hint: 'Registered keepers' },
 ]
 
-type Grid = Record<PositionLine, { goal: number; assist: number }>
+type Pair = { goal: number; assist: number }
+type Grid = Record<PositionLine, Pair>
 
-export function PositionPointsEditor() {
+/**
+ * The one place goal and assist values are set. The first row is the flat
+ * value (scoring_rules): used by everyone when Position points is off, and by
+ * players with no position when it's on. The rest are position_points.
+ */
+export function GoalAssistPoints() {
   const { activeOrg } = useAuth()
   const queryClient = useQueryClient()
   const [grid, setGrid] = useState<Grid | null>(null)
+  const [base, setBase] = useState<Pair | null>(null)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -129,25 +136,55 @@ export function PositionPointsEditor() {
     enabled: !!activeOrg,
   })
 
+  const { data: rules } = useQuery({
+    queryKey: ['scoring-rules', activeOrg?.id],
+    queryFn: async () => (await api.get<ScoringRule[]>('scoring/rules')).data,
+    enabled: !!activeOrg,
+  })
+
+  const { data: periods } = useQuery({
+    queryKey: ['periods', activeOrg?.id],
+    queryFn: async () => (await api.get<Period[]>('periods')).data,
+    enabled: !!activeOrg,
+  })
+  const open = periods?.find((p) => p.status === 'open')
+
   useEffect(() => {
     if (!data) return
     const next = {} as Grid
     for (const { line } of LINES) next[line] = { goal: 0, assist: 0 }
-    for (const row of data) next[row.line][row.event_type] = Number(row.points)
+    for (const row of data) {
+      if (row.line in next) next[row.line][row.event_type] = Number(row.points)
+    }
     setGrid(next)
   }, [data])
 
+  useEffect(() => {
+    if (!rules) return
+    const pick = (t: string) => Number(rules.find((r) => r.event_type === t)?.points ?? 0)
+    setBase({ goal: pick('goal'), assist: pick('assist') })
+  }, [rules])
+
   const save = useMutation({
-    mutationFn: async (g: Grid) =>
-      api.put('scoring/position-points', {
+    mutationFn: async ({ g, b }: { g: Grid; b: Pair }) => {
+      const enabled = (t: string) => rules?.find((r) => r.event_type === t)?.enabled ?? true
+      await api.put('scoring/rules', {
+        rules: [
+          { event_type: 'goal', points: b.goal, enabled: enabled('goal') },
+          { event_type: 'assist', points: b.assist, enabled: enabled('assist') },
+        ],
+      })
+      return api.put('scoring/position-points', {
         points: LINES.flatMap(({ line }) => [
           { line, event_type: 'goal', points: g[line].goal },
           { line, event_type: 'assist', points: g[line].assist },
         ]),
-      }),
+      })
+    },
     onMutate: () => setError(null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['position-points'] })
+      queryClient.invalidateQueries({ queryKey: ['scoring-rules'] })
       queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setSaved(true)
@@ -156,55 +193,81 @@ export function PositionPointsEditor() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not save those points'),
   })
 
-  if (isLoading || !grid) return <Skeleton className="h-56" />
+  if (isLoading || !grid || !base) return <Skeleton className="h-56" />
 
-  function set(line: PositionLine, key: 'goal' | 'assist', value: number) {
-    setGrid((g) => (g ? { ...g, [line]: { ...g[line], [key]: value } } : g))
-  }
+  const positional = !!open?.positional_scoring
+
+  const rows: { key: string; label: string; hint: string; value: Pair; set: (k: keyof Pair, v: number) => void; muted: boolean }[] = [
+    {
+      key: 'base',
+      label: 'Normal points',
+      hint: positional ? 'Players with no position' : 'Everyone, this month',
+      value: base,
+      set: (k, v) => setBase((b) => (b ? { ...b, [k]: v } : b)),
+      muted: false,
+    },
+    ...LINES.map(({ line, label, hint }) => ({
+      key: line,
+      label,
+      hint,
+      value: grid[line],
+      set: (k: keyof Pair, v: number) => setGrid((g) => (g ? { ...g, [line]: { ...g[line], [k]: v } } : g)),
+      muted: !positional,
+    })),
+  ]
 
   return (
     <div>
-      <SectionTitle>Goals and assists by position</SectionTitle>
+      <SectionTitle>Goals and assists</SectionTitle>
       <Card className="py-0">
         <div className="flex items-center gap-3 border-b border-pitch-700 py-2 text-[12px] uppercase tracking-wide text-chalk-faint">
-          <span className="flex-1">Position</span>
+          <span className="flex-1">Who</span>
           <span className="w-16 text-center">Goal</span>
           <span className="w-16 text-center">Assist</span>
         </div>
         <div className="divide-y divide-pitch-700">
-          {LINES.map(({ line, label, hint }) => (
-            <div key={line} className="flex items-center gap-3 py-3">
-              <span className="min-w-0 flex-1">
-                <span className="block text-[15px] text-chalk">{label}</span>
-                <span className="block text-[12.5px] text-chalk-muted">{hint}</span>
-              </span>
-              {(['goal', 'assist'] as const).map((key) => (
-                <input
-                  key={key}
-                  type="number"
-                  step="0.5"
-                  aria-label={`${label} ${key}`}
-                  value={grid[line][key]}
-                  onChange={(e) => set(line, key, Number(e.target.value))}
-                  className="numeric h-10 w-16 rounded-lg border border-pitch-700 bg-pitch-800 px-2 text-center text-[16px] text-chalk focus:border-turf-400 focus:outline-none"
-                />
-              ))}
+          {rows.map((row, i) => (
+            <div key={row.key}>
+              {i === 1 && (
+                <p className="pt-3 text-[12px] uppercase tracking-wide text-chalk-faint">
+                  By position {positional ? '' : '— off this month'}
+                </p>
+              )}
+              <div className={`flex items-center gap-3 py-3 ${row.muted ? 'opacity-50' : ''}`}>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] text-chalk">{row.label}</span>
+                  <span className="block text-[12.5px] text-chalk-muted">{row.hint}</span>
+                </span>
+                {(['goal', 'assist'] as const).map((k) => (
+                  <input
+                    key={k}
+                    type="number"
+                    step="0.5"
+                    aria-label={`${row.label} ${k}`}
+                    value={row.value[k]}
+                    onChange={(e) => row.set(k, Number(e.target.value))}
+                    className="numeric h-10 w-16 rounded-lg border border-pitch-700 bg-pitch-800 px-2 text-center text-[16px] text-chalk focus:border-turf-400 focus:outline-none"
+                  />
+                ))}
+              </div>
             </div>
           ))}
         </div>
       </Card>
       <p className="mt-2 text-[13px] leading-relaxed text-chalk-muted">
-        Only used in months with Position points switched on. Players with no position get the
-        normal goal and assist points below. Clean sheets stay the same for everyone. A player's position is set when they join and can be changed by an admin.
+        {positional
+          ? 'Position points are on this month, so each player earns their position\'s values. '
+          : 'Position points are off this month, so everyone earns the normal points. The position values are kept ready for when you switch it on. '}
+        Clean sheets and everything else are set below and are the same for everyone.
       </p>
       {error && <p className="mt-2 text-[14px] text-card-red">{error}</p>}
       <Button
         className="mt-3"
         fullWidth
         loading={save.isPending}
-        onClick={() => save.mutate(grid)}
+        onClick={() => save.mutate({ g: grid, b: base })}
       >
-        {saved ? 'Saved — table updated ✓' : 'Save position points'}
+        {saved ? 'Saved — table updated ✓' : 'Save goals and assists'}
       </Button>
     </div>
   )
