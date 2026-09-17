@@ -39,12 +39,12 @@ export async function joinTeam(ctx: Ctx): Promise<Response> {
 
   const { data: org, error: orgErr } = await ctx.db
     .from('organizations')
-    .select('id, name, deleted_at')
+    .select('id, name, status, deleted_at')
     .eq('slug', slug)
     .maybeSingle()
 
   if (orgErr) throw new Error(orgErr.message)
-  if (!org || org.deleted_at) throw notFound('That invite link is not available')
+  if (!org || org.deleted_at || org.status !== 'active') throw notFound('That invite link is not available')
 
   const firstName = String(body.first_name).trim()
 

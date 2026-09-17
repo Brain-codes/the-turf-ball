@@ -9,6 +9,8 @@ import { Link, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { RiArrowRightLine, RiCloseLine, RiMenuLine } from '@remixicon/react'
 import { cn } from '@/lib/cn'
+import { useAccountLink } from './useAccountLink'
+import { usePlatformFeatures, type PlatformFeature } from '@/lib/platformFeatures'
 
 export function BrandMark({ className }: { className?: string }) {
   return (
@@ -26,17 +28,20 @@ export function BrandMark({ className }: { className?: string }) {
   )
 }
 
-const LINKS = [
-  { to: '/', label: 'Home', match: (p: string) => p === '/' },
-  { to: '/leaderboard', label: 'Tables', match: (p: string) => p.startsWith('/leaderboard') },
-  { to: '/h2h', label: 'Head-to-head', match: (p: string) => p.startsWith('/h2h') },
-  { to: '/contact', label: 'Contact', match: (p: string) => p.startsWith('/contact') },
+const ALL_LINKS: { to: string; label: string; match: (p: string) => boolean; feature?: PlatformFeature }[] = [
+  { to: '/', label: 'Home', match: (p) => p === '/' },
+  { to: '/leaderboard', label: 'Tables', match: (p) => p.startsWith('/leaderboard'), feature: 'public_tables' },
+  { to: '/h2h', label: 'Head-to-head', match: (p) => p.startsWith('/h2h'), feature: 'head_to_head' },
+  { to: '/contact', label: 'Contact', match: (p) => p.startsWith('/contact'), feature: 'contact_form' },
 ]
 
 export function PublicNavbar() {
   const { pathname } = useLocation()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
+  const isOn = usePlatformFeatures()
+  const account = useAccountLink()
+  const LINKS = ALL_LINKS.filter((l) => !l.feature || isOn(l.feature))
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24)
@@ -83,16 +88,30 @@ export function PublicNavbar() {
         </div>
 
         <div className="flex items-center gap-1.5">
-          <Link to="/login" className="hidden rounded-full px-4 py-2 text-[14px] text-chalk-muted transition-colors hover:text-chalk sm:block">
-            Log in
-          </Link>
-          <Link
-            to="/register"
-            className="group hidden items-center gap-1.5 rounded-full bg-volt-400 px-4 py-2.5 text-[14px] font-semibold text-void transition-colors hover:bg-volt-300 sm:flex"
-          >
-            Start free
-            <RiArrowRightLine className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-          </Link>
+          {account.state === 'loading' && <span aria-hidden className="hidden h-10 w-32 sm:block" />}
+          {account.state === 'guest' && (
+            <>
+              <Link to="/login" className="hidden rounded-full px-4 py-2 text-[14px] text-chalk-muted transition-colors hover:text-chalk sm:block">
+                Log in
+              </Link>
+              <Link
+                to="/register"
+                className="group hidden items-center gap-1.5 rounded-full bg-volt-400 px-4 py-2.5 text-[14px] font-semibold text-void transition-colors hover:bg-volt-300 sm:flex"
+              >
+                Start free
+                <RiArrowRightLine className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </>
+          )}
+          {account.state === 'member' && (
+            <Link
+              to={account.to}
+              className="group hidden items-center gap-1.5 rounded-full bg-volt-400 px-4 py-2.5 text-[14px] font-semibold text-void transition-colors hover:bg-volt-300 sm:flex"
+            >
+              {account.label}
+              <RiArrowRightLine className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -127,14 +146,23 @@ export function PublicNavbar() {
                 {l.label}
               </Link>
             ))}
-            <div className="mt-2 grid grid-cols-2 gap-2 border-t border-pitch-700 pt-2">
-              <Link to="/login" className="rounded-2xl border border-pitch-600 px-4 py-3 text-center text-[15px] text-chalk">
-                Log in
-              </Link>
-              <Link to="/register" className="rounded-2xl bg-volt-400 px-4 py-3 text-center text-[15px] font-semibold text-void">
-                Start free
-              </Link>
-            </div>
+            {account.state === 'guest' && (
+              <div className="mt-2 grid grid-cols-2 gap-2 border-t border-pitch-700 pt-2">
+                <Link to="/login" className="rounded-2xl border border-pitch-600 px-4 py-3 text-center text-[15px] text-chalk">
+                  Log in
+                </Link>
+                <Link to="/register" className="rounded-2xl bg-volt-400 px-4 py-3 text-center text-[15px] font-semibold text-void">
+                  Start free
+                </Link>
+              </div>
+            )}
+            {account.state === 'member' && (
+              <div className="mt-2 border-t border-pitch-700 pt-2">
+                <Link to={account.to} className="block rounded-2xl bg-volt-400 px-4 py-3 text-center text-[15px] font-semibold text-void">
+                  {account.label}
+                </Link>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

@@ -22,6 +22,7 @@ import type { Ctx } from '../../_shared/router.ts'
 import { successResponse } from '../../_shared/response.ts'
 import { badRequest, tooMany } from '../../_shared/errors.ts'
 import { email, oneOf, required, str, validate } from '../../_shared/validation.ts'
+import { requireFeature } from '../../_shared/features.ts'
 
 const TOPICS = ['question', 'suggestion', 'bug', 'partnership', 'other'] as const
 const MAX_BODY_BYTES = 16_000
@@ -84,6 +85,8 @@ async function countSince(ctx: Ctx, column: 'ip_hash' | 'email' | null, value: s
 }
 
 export async function submitMessage(ctx: Ctx): Promise<Response> {
+  await requireFeature(ctx.db, 'contact_form', 'The contact form is switched off right now.')
+
   const length = Number(ctx.req.headers.get('content-length') ?? 0)
   if (length > MAX_BODY_BYTES) throw badRequest('That message is too long')
 

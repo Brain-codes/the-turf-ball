@@ -23,6 +23,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, setActiveOrg } from '@/services/client'
+import { LogoPicker } from '@/features/organizations/LogoPicker'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { Badge, Button, Card, Field, Input, PlayerAvatar, PositionSelect, Select } from '@/components/ui'
 import { FadeIn } from '@/components/motion'
@@ -73,6 +74,7 @@ export function Onboarding() {
     location: '',
     format: '5aside',
   })
+  const [logo, setLogo] = useState<string | null>(null)
 
   // Schedule: pick several weekdays, then either one shared kickoff+end
   // applied to all of them, or a distinct kickoff+end per day. Real groups
@@ -105,6 +107,7 @@ export function Onboarding() {
         location: details.location || null,
         format: details.format,
         players_per_side: details.format === '5aside' ? 5 : details.format === '7aside' ? 7 : 11,
+        logo_base64: logo ?? undefined,
       })
       setOrg(data)
       setActiveOrg(data.id)
@@ -206,6 +209,11 @@ export function Onboarding() {
                   placeholder="XYZ Football Arena"
                 />
               </Field>
+
+              <LogoPicker
+                name={details.name}
+                onChange={(v) => setLogo(v && 'dataUrl' in v ? v.dataUrl : null)}
+              />
 
               {error && <p className="text-[14px] text-card-red">{error}</p>}
 

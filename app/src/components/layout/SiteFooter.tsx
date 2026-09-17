@@ -1,8 +1,12 @@
 import { Link } from 'react-router-dom'
 import { RiArrowRightUpLine } from '@remixicon/react'
 import { BrandMark } from './PublicNavbar'
+import { usePlatformFeatures, type PlatformFeature } from '@/lib/platformFeatures'
+import { useAccountLink } from './useAccountLink'
 
-const COLUMNS = [
+type FooterColumn = { title: string; links: { label: string; to: string; feature?: PlatformFeature }[] }
+
+const COLUMNS: FooterColumn[] = [
   {
     title: 'Product',
     links: [
@@ -15,24 +19,33 @@ const COLUMNS = [
   {
     title: 'Explore',
     links: [
-      { label: 'All group tables', to: '/leaderboard' },
-      { label: 'Head-to-head', to: '/h2h' },
+      { label: 'All group tables', to: '/leaderboard', feature: 'public_tables' },
+      { label: 'Head-to-head', to: '/h2h', feature: 'head_to_head' },
       { label: 'Questions', to: '/#faq' },
-      { label: 'Contact us', to: '/contact' },
-    ],
-  },
-  {
-    title: 'Account',
-    links: [
-      { label: 'Start a group', to: '/register' },
-      { label: 'Log in', to: '/login' },
-      { label: 'Forgot password', to: '/forgot-password' },
+      { label: 'Contact us', to: '/contact', feature: 'contact_form' },
     ],
   },
 ]
 
+const GUEST_ACCOUNT = [
+  { label: 'Start a group', to: '/register' },
+  { label: 'Log in', to: '/login' },
+  { label: 'Forgot password', to: '/forgot-password' },
+]
+
 export function SiteFooter() {
   const year = new Date().getFullYear()
+  const isOn = usePlatformFeatures()
+  const account = useAccountLink()
+  const columns: FooterColumn[] = [
+    ...COLUMNS,
+    {
+      title: 'Account',
+      links: account.state === 'member'
+        ? [{ label: account.label, to: account.to }, { label: 'Settings', to: '/app/settings' }]
+        : GUEST_ACCOUNT,
+    },
+  ]
 
   return (
     <footer className="relative border-t border-pitch-700/70 bg-void">
@@ -48,20 +61,20 @@ export function SiteFooter() {
               worked out for you, shared in one link.
             </p>
             <Link
-              to="/register"
+              to={account.state === 'member' ? account.to : '/register'}
               className="group mt-6 inline-flex items-center gap-2 rounded-full border border-volt-400/50 px-5 py-3 text-[14px] font-semibold text-volt-400 transition-colors hover:bg-volt-400 hover:text-void"
             >
-              Start your group, free
+              {account.state === 'member' ? account.label : 'Start your group, free'}
               <RiArrowRightUpLine className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
             </Link>
           </div>
 
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
-            {COLUMNS.map((col) => (
+            {columns.map((col) => (
               <nav key={col.title} aria-label={col.title}>
                 <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-chalk-faint">{col.title}</h2>
                 <ul className="mt-4 space-y-1">
-                  {col.links.map((l) => (
+                  {col.links.filter((l) => !l.feature || isOn(l.feature)).map((l) => (
                     <li key={l.label}>
                       <Link to={l.to} className="inline-block py-1.5 text-[15px] text-chalk-muted transition-colors hover:text-chalk">
                         {l.label}

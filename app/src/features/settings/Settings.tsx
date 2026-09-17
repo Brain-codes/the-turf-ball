@@ -12,6 +12,7 @@ import {
 import { FadeIn } from '@/components/motion'
 import { cn } from '@/lib/cn'
 import { GoalAssistPoints, MonthSwitches } from './ScoringSwitches'
+import { LogoPicker } from '@/features/organizations/LogoPicker'
 import type { Competition, DeleteAccountPreview, MemberRow, Organization, OrgSettings, ScoringPreset, ScoringRule } from '@/types'
 
 function IconGroup(props: SVGProps<SVGSVGElement>) {
@@ -189,7 +190,9 @@ function useOrganization() {
 export function GeneralSettings() {
   const { activeOrg, refresh } = useAuth()
   const { data, isLoading } = useOrganization()
+  const queryClient = useQueryClient()
   const [form, setForm] = useState({ name: '', short_name: '', venue: '', location: '', description: '' })
+  const [logo, setLogo] = useState<{ dataUrl: string } | { removed: true } | null>(null)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -205,8 +208,15 @@ export function GeneralSettings() {
   }, [data])
 
   const save = useMutation({
-    mutationFn: async () => api.patch(`organizations/${activeOrg!.id}`, form),
+    mutationFn: async () =>
+      api.patch(`organizations/${activeOrg!.id}`, {
+        ...form,
+        ...(logo && 'dataUrl' in logo ? { logo_base64: logo.dataUrl } : {}),
+        ...(logo && 'removed' in logo ? { logo_url: null } : {}),
+      }),
     onSuccess: async () => {
+      setLogo(null)
+      await queryClient.invalidateQueries({ queryKey: ['organization'] })
       await refresh()
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -217,6 +227,7 @@ export function GeneralSettings() {
 
   return (
     <FadeIn className="space-y-4">
+      <LogoPicker currentUrl={data?.logo_url} name={form.name} onChange={setLogo} />
       <Field label="Group name">
         <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       </Field>
@@ -872,6 +883,15 @@ export function AccountSettings() {
 
   return (
     <FadeIn className="space-y-6">
+      {profile?.is_platform_admin && (
+        <NavLink
+          to="/admin"
+          className="flex min-h-12 items-center justify-between rounded-[var(--radius-card)] border border-volt-400/40 bg-volt-400/10 px-4 text-[15px] font-medium text-volt-400"
+        >
+          Open super admin
+          <span aria-hidden>→</span>
+        </NavLink>
+      )}
       <Card>
         <p className="text-[13.5px] leading-relaxed text-chalk-muted">
           Signed in as <b className="text-chalk">{profile?.email}</b>.

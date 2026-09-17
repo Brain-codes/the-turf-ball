@@ -22,13 +22,26 @@ const MIME_EXT: Record<string, string> = {
  * Returns the public URL of the uploaded object, scoped under the
  * organization's id so photos from different groups never collide.
  */
-export async function uploadPlayerPhoto(
+export function uploadPlayerPhoto(db: SupabaseClient, organizationId: string, dataUrl: string): Promise<string> {
+  return uploadImage(db, 'player-photos', `${organizationId}/${crypto.randomUUID()}`, dataUrl, MAX_BYTES, 'Photo', '5MB')
+}
+
+/** A group's logo or badge, stored under its id in the org-logos bucket. */
+export function uploadOrgLogo(db: SupabaseClient, organizationId: string, dataUrl: string): Promise<string> {
+  return uploadImage(db, 'org-logos', `${organizationId}/${crypto.randomUUID()}`, dataUrl, 2 * 1024 * 1024, 'Logo', '2MB')
+}
+
+async function uploadImage(
   db: SupabaseClient,
-  organizationId: string,
+  bucket: string,
+  pathBase: string,
   dataUrl: string,
+  maxBytes: number,
+  noun: string,
+  limitLabel: string,
 ): Promise<string> {
   const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/)
-  if (!match) throw badRequest('Photo must be a JPEG, PNG or WebP image')
+  if (!match) throw badRequest(`${noun} must be a JPEG, PNG or WebP image`)
 
   const [, mime, base64] = match
   const ext = MIME_EXT[mime]
@@ -39,18 +52,18 @@ export async function uploadPlayerPhoto(
     bytes = new Uint8Array(binary.length)
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   } catch {
-    throw badRequest('That photo could not be read')
+    throw badRequest(`That ${noun.toLowerCase()} could not be read`)
   }
 
-  if (bytes.byteLength > MAX_BYTES) throw badRequest('Photos must be under 5MB')
+  if (bytes.byteLength > maxBytes) throw badRequest(`${noun} must be under ${limitLabel}`)
 
-  const path = `${organizationId}/${crypto.randomUUID()}.${ext}`
-  const { error } = await db.storage.from('player-photos').upload(path, bytes, {
+  const path = `${pathBase}.${ext}`
+  const { error } = await db.storage.from(bucket).upload(path, bytes, {
     contentType: mime,
     upsert: false,
   })
   if (error) throw new Error(error.message)
 
-  const { data } = db.storage.from('player-photos').getPublicUrl(path)
+  const { data } = db.storage.from(bucket).getPublicUrl(path)
   return data.publicUrl
 }

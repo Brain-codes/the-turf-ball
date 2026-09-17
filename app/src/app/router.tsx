@@ -55,6 +55,15 @@ const MembersSettings = lazy(() => import('@/features/settings/Settings').then((
 const AccountSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.AccountSettings })))
 const JoinScreen = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.JoinScreen })))
 
+const AdminLayout = lazy(() => import('@/features/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })))
+const AdminOverview = lazy(() => import('@/features/admin/Overview').then((m) => ({ default: m.AdminOverview })))
+const AdminGroups = lazy(() => import('@/features/admin/Groups').then((m) => ({ default: m.AdminGroups })))
+const AdminGroupDetail = lazy(() => import('@/features/admin/Groups').then((m) => ({ default: m.AdminGroupDetail })))
+const AdminUsers = lazy(() => import('@/features/admin/Users').then((m) => ({ default: m.AdminUsers })))
+const AdminFeatures = lazy(() => import('@/features/admin/Features').then((m) => ({ default: m.AdminFeatures })))
+const AdminMessages = lazy(() => import('@/features/admin/Messages').then((m) => ({ default: m.AdminMessages })))
+const AdminActivity = lazy(() => import('@/features/admin/Activity').then((m) => ({ default: m.AdminActivity })))
+
 function Booting() {
   return (
     <div className="flex min-h-dvh items-center justify-center">
@@ -148,6 +157,17 @@ export function Router() {
           <Route path="members" element={<MembersSettings />} />
           <Route path="account" element={<AccountSettings />} />
         </Route>
+      </Route>
+
+      {/* Super admin. AdminLayout checks the flag; the /admin API enforces it. */}
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route index element={<AdminOverview />} />
+        <Route path="groups" element={<AdminGroups />} />
+        <Route path="groups/:id" element={<AdminGroupDetail />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="features" element={<AdminFeatures />} />
+        <Route path="messages" element={<AdminMessages />} />
+        <Route path="activity" element={<AdminActivity />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
