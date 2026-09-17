@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
 import { RiArrowRightUpLine } from '@remixicon/react'
 import { BrandMark } from './PublicNavbar'
+import { usePlatformFeatures, type PlatformFeature } from '@/lib/platformFeatures'
 
-const COLUMNS = [
+const COLUMNS: { title: string; links: { label: string; to: string; feature?: PlatformFeature }[] }[] = [
   {
     title: 'Product',
     links: [
@@ -15,10 +16,10 @@ const COLUMNS = [
   {
     title: 'Explore',
     links: [
-      { label: 'All group tables', to: '/leaderboard' },
-      { label: 'Head-to-head', to: '/h2h' },
+      { label: 'All group tables', to: '/leaderboard', feature: 'public_tables' },
+      { label: 'Head-to-head', to: '/h2h', feature: 'head_to_head' },
       { label: 'Questions', to: '/#faq' },
-      { label: 'Contact us', to: '/contact' },
+      { label: 'Contact us', to: '/contact', feature: 'contact_form' },
     ],
   },
   {
@@ -33,6 +34,7 @@ const COLUMNS = [
 
 export function SiteFooter() {
   const year = new Date().getFullYear()
+  const isOn = usePlatformFeatures()
 
   return (
     <footer className="relative border-t border-pitch-700/70 bg-void">
@@ -61,7 +63,7 @@ export function SiteFooter() {
               <nav key={col.title} aria-label={col.title}>
                 <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-chalk-faint">{col.title}</h2>
                 <ul className="mt-4 space-y-1">
-                  {col.links.map((l) => (
+                  {col.links.filter((l) => !l.feature || isOn(l.feature)).map((l) => (
                     <li key={l.label}>
                       <Link to={l.to} className="inline-block py-1.5 text-[15px] text-chalk-muted transition-colors hover:text-chalk">
                         {l.label}

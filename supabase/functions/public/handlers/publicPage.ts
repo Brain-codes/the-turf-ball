@@ -26,7 +26,8 @@ interface PageContext {
 async function loadPage(ctx: Ctx, slug: string): Promise<PageContext> {
   const { data } = await ctx.db
     .from('public_pages')
-    .select('*, organizations!inner(id, name, short_name, slug, logo_url, description, location, venue, format, timezone, deleted_at)')
+    .select('*, organizations!inner(id, name, short_name, slug, logo_url, description, location, venue, format, timezone, status, deleted_at)')
+    .eq('organizations.status', 'active')
     .eq('slug', slug)
     .is('organizations.deleted_at', null)
     .maybeSingle()

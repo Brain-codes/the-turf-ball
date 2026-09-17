@@ -7,6 +7,7 @@ import { RiCheckboxCircleLine, RiMailSendLine } from '@remixicon/react'
 import { PublicHero, PublicLayout } from '@/components/layout/PublicLayout'
 import { Button, Field, Input, Select } from '@/components/ui'
 import { api, ApiError } from '@/services/client'
+import { usePlatformFeatures } from '@/lib/platformFeatures'
 
 const TOPICS = [
   { value: 'question', label: 'A question' },
@@ -35,6 +36,7 @@ export function ContactScreen() {
   const [token, setToken] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const contactOn = usePlatformFeatures()('contact_form')
 
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<Values>({
     resolver: zodResolver(schema),
@@ -72,7 +74,12 @@ export function ContactScreen() {
       />
 
       <div className="mx-auto max-w-xl px-5">
-        {sent ? (
+        {!contactOn ? (
+          <div role="status" className="surface-raised p-8 text-center">
+            <h2 className="text-2xl">The contact form is paused</h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-chalk-muted">We’re not taking messages here right now. Please check back soon.</p>
+          </div>
+        ) : sent ? (
           <div role="status" className="surface-raised p-8 text-center">
             <RiCheckboxCircleLine className="mx-auto h-12 w-12 text-volt-400" />
             <h2 className="mt-4 text-2xl">Message sent</h2>
