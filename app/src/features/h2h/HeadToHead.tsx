@@ -20,7 +20,8 @@ import { cn } from '@/lib/cn'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
-import { PublicNavbar } from '@/components/layout/PublicNavbar'
+import { RiSwordLine } from '@remixicon/react'
+import { PublicHero, PublicLayout } from '@/components/layout/PublicLayout'
 import { FadeIn } from '@/components/motion'
 import { Button, Card, EmptyState, ErrorState, Input, PlayerAvatar, PlayerName, Select, Skeleton } from '@/components/ui'
 import { renderShareCard, type CardRow } from './shareCard'
@@ -88,21 +89,17 @@ const ROWS: { label: string; get: (s: H2HSide) => number; lowerIsBetter?: boolea
 
 export function PublicHeadToHeadScreen() {
   return (
-    <div className="min-h-dvh pb-16">
-      <PublicNavbar />
-      <FadeIn>
-        <header className="pitch-lines px-5 pb-6 pt-10 text-center">
-          <div className="mb-3 text-4xl">⚔️</div>
-          <h1 className="text-[clamp(1.75rem,7vw,2.5rem)] leading-tight">Head to head</h1>
-          <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-chalk-muted">
-            Pick any two players, from any two teams, and see who comes out on top.
-          </p>
-        </header>
-      </FadeIn>
+    <PublicLayout className="pb-16">
+      <PublicHero
+        icon={RiSwordLine}
+        eyebrow="Head-to-head"
+        title={<>Settle it. <span className="text-volt-400">Side by side.</span></>}
+        lead="Pick any two players, from any two teams, and see who comes out on top."
+      />
       <div className="mx-auto max-w-3xl px-5">
         <HeadToHead mode="public" />
       </div>
-    </div>
+    </PublicLayout>
   )
 }
 

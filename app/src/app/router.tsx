@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { Spinner } from '@/components/ui'
+import { RouteSeo } from '@/lib/seo'
 
 /**
  * Route-level code splitting.
@@ -16,6 +17,8 @@ import { PublicPageScreen, PublicPlayerScreen, PublicLiveSessionScreen } from '@
 import { JoinTeamScreen } from '@/features/onboarding/JoinTeam'
 
 const GlobalLeaderboardScreen = lazy(() => import('@/features/public/GlobalLeaderboard').then((m) => ({ default: m.GlobalLeaderboardScreen })))
+
+const ContactScreen = lazy(() => import('@/features/public/Contact').then((m) => ({ default: m.ContactScreen })))
 
 const PublicHeadToHeadScreen = lazy(() => import('@/features/h2h/HeadToHead').then((m) => ({ default: m.PublicHeadToHeadScreen })))
 const MemberHeadToHeadScreen = lazy(() => import('@/features/h2h/HeadToHead').then((m) => ({ default: m.MemberHeadToHeadScreen })))
@@ -82,6 +85,7 @@ export function Router() {
 
   return (
     <Suspense fallback={<Booting />}>
+    <RouteSeo />
     <Routes>
       {/* Public */}
       <Route path="/" element={<Landing />} />
@@ -90,6 +94,7 @@ export function Router() {
       <Route path="/t/:slug/live/:sessionId" element={<PublicLiveSessionScreen />} />
       <Route path="/leaderboard" element={<GlobalLeaderboardScreen />} />
       <Route path="/h2h" element={<PublicHeadToHeadScreen />} />
+      <Route path="/contact" element={<ContactScreen />} />
       <Route path="/join/:token" element={<JoinScreen />} />
       <Route path="/play/:slug" element={<JoinTeamScreen />} />
 
