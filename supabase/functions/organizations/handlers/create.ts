@@ -6,9 +6,11 @@
  */
 
 import type { Ctx } from '../../_shared/router.ts'
+import { requireFeature } from '../../_shared/features.ts'
+import { uploadOrgLogo } from '../../_shared/storage.ts'
 import { successResponse } from '../../_shared/response.ts'
 import { requireUser } from '../../_shared/auth.ts'
-import { conflict } from '../../_shared/errors.ts'
+import { badRequest, conflict } from '../../_shared/errors.ts'
 import { int, oneOf, required, slugify, str, validate } from '../../_shared/validation.ts'
 import { audit, openPeriodId } from '../../_shared/helpers.ts'
 
@@ -26,7 +28,7 @@ interface Body {
   playing_days?: string[]
   default_kickoff?: string
   timezone?: string
-  logo_url?: string
+  logo_base64?: string
 }
 
 /** Find a free slug, appending -2, -3 … rather than rejecting the name. */
@@ -46,6 +48,7 @@ async function uniqueSlug(ctx: Ctx, desired: string): Promise<string> {
 
 export async function createOrganization(ctx: Ctx): Promise<Response> {
   const user = await requireUser(ctx.req)
+  await requireFeature(ctx.db, 'new_groups', 'New groups are paused right now. Please try again later.')
   const body = await ctx.body<Body>()
 
   validate(body as unknown as Record<string, unknown>, {
@@ -57,6 +60,10 @@ export async function createOrganization(ctx: Ctx): Promise<Response> {
     format: [oneOf(FORMATS)],
     players_per_side: [int(3, 11)],
   })
+
+  if (body.logo_base64 && !/^data:image\/(jpeg|png|webp);base64,/.test(body.logo_base64)) {
+    throw badRequest('Logo must be a JPEG, PNG or WebP image')
+  }
 
   const slug = await uniqueSlug(ctx, body.slug || body.name)
 
@@ -75,7 +82,6 @@ export async function createOrganization(ctx: Ctx): Promise<Response> {
       playing_days: body.playing_days ?? [],
       default_kickoff: body.default_kickoff ?? '17:00',
       timezone: body.timezone ?? 'Africa/Lagos',
-      logo_url: body.logo_url ?? null,
     })
     .select('*')
     .single()
@@ -111,6 +117,17 @@ export async function createOrganization(ctx: Ctx): Promise<Response> {
     if (pageErr) throw new Error(pageErr.message)
 
     const periodId = await openPeriodId(ctx.db, org.id)
+
+    // The logo is optional: if it fails, the group still gets created and the
+    // logo can be added later in Settings.
+    if (body.logo_base64) {
+      try {
+        org.logo_url = await uploadOrgLogo(ctx.db, org.id, body.logo_base64)
+        await ctx.db.from('organizations').update({ logo_url: org.logo_url }).eq('id', org.id)
+      } catch (logoErr) {
+        ctx.log.warn('logo upload failed', { error: String(logoErr) })
+      }
+    }
 
     await ctx.db.from('profiles').update({ onboarded_at: new Date().toISOString() }).eq('id', user.id)
     await audit(ctx.db, org.id, user.id, 'organization.create', 'organization', org.id)

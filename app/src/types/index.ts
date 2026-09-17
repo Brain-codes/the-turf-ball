@@ -18,6 +18,7 @@ export interface Profile {
   full_name: string | null
   avatar_url: string | null
   onboarded_at: string | null
+  is_platform_admin?: boolean
   deleted_at?: string | null
 }
 

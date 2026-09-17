@@ -15,7 +15,10 @@ const JPEG_QUALITY = 0.8
  * base64'd into an API payload — player/squad photos are camera-resolution
  * by default and would otherwise bloat requests and storage.
  */
-export function compressImage(file: File): Promise<string> {
+export function compressImage(
+  file: File,
+  { maxDimension = MAX_DIMENSION, type = 'image/jpeg' }: { maxDimension?: number; type?: 'image/jpeg' | 'image/webp' } = {},
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const objectUrl = URL.createObjectURL(file)
@@ -23,7 +26,7 @@ export function compressImage(file: File): Promise<string> {
     img.onload = () => {
       URL.revokeObjectURL(objectUrl)
 
-      const scale = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height))
+      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height))
       const width = Math.round(img.width * scale)
       const height = Math.round(img.height * scale)
 
@@ -36,7 +39,7 @@ export function compressImage(file: File): Promise<string> {
         return
       }
       ctx.drawImage(img, 0, 0, width, height)
-      resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY))
+      resolve(canvas.toDataURL(type, JPEG_QUALITY))
     }
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl)

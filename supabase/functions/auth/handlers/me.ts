@@ -22,7 +22,7 @@ export async function me(ctx: Ctx): Promise<Response> {
 
   const { data: profile } = await ctx.db
     .from('profiles')
-    .select('id, email, full_name, avatar_url, onboarded_at, deleted_at')
+    .select('id, email, full_name, avatar_url, onboarded_at, is_platform_admin, deleted_at')
     .eq('id', user.id)
     .maybeSingle()
 

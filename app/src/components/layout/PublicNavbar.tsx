@@ -9,6 +9,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { RiArrowRightLine, RiCloseLine, RiMenuLine } from '@remixicon/react'
 import { cn } from '@/lib/cn'
+import { usePlatformFeatures, type PlatformFeature } from '@/lib/platformFeatures'
 
 export function BrandMark({ className }: { className?: string }) {
   return (
@@ -26,17 +27,19 @@ export function BrandMark({ className }: { className?: string }) {
   )
 }
 
-const LINKS = [
-  { to: '/', label: 'Home', match: (p: string) => p === '/' },
-  { to: '/leaderboard', label: 'Tables', match: (p: string) => p.startsWith('/leaderboard') },
-  { to: '/h2h', label: 'Head-to-head', match: (p: string) => p.startsWith('/h2h') },
-  { to: '/contact', label: 'Contact', match: (p: string) => p.startsWith('/contact') },
+const ALL_LINKS: { to: string; label: string; match: (p: string) => boolean; feature?: PlatformFeature }[] = [
+  { to: '/', label: 'Home', match: (p) => p === '/' },
+  { to: '/leaderboard', label: 'Tables', match: (p) => p.startsWith('/leaderboard'), feature: 'public_tables' },
+  { to: '/h2h', label: 'Head-to-head', match: (p) => p.startsWith('/h2h'), feature: 'head_to_head' },
+  { to: '/contact', label: 'Contact', match: (p) => p.startsWith('/contact'), feature: 'contact_form' },
 ]
 
 export function PublicNavbar() {
   const { pathname } = useLocation()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
+  const isOn = usePlatformFeatures()
+  const LINKS = ALL_LINKS.filter((l) => !l.feature || isOn(l.feature))
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24)

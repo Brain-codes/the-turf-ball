@@ -66,7 +66,7 @@ export async function requireMember(
   // window must be invisible to every member, owner included.
   let query = db
     .from('organization_members')
-    .select('organization_id, role, organizations!inner(deleted_at)')
+    .select('organization_id, role, organizations!inner(deleted_at, status)')
     .eq('user_id', user.id)
     .eq('status', 'active')
     .is('organizations.deleted_at', null)
@@ -86,6 +86,10 @@ export async function requireMember(
   }
 
   const membership = data[0]
+  // Suspended by the super admin: nobody in the group can use it until restored.
+  if ((membership.organizations as unknown as { status: string }).status === 'archived') {
+    throw forbidden('This group has been suspended. Contact The Turf Ball through the Contact page.')
+  }
   if (ROLE_RANK[membership.role] < ROLE_RANK[minRole]) {
     throw forbidden(`This action requires ${minRole} permission`)
   }
@@ -109,4 +113,18 @@ export async function assertOwned(
 
   if (error) throw new Error(error.message)
   if (!data) throw notFound()
+}
+
+/** Platform super admin only. Checked on the server for every admin request. */
+export async function requireSuperAdmin(req: Request, db: SupabaseClient): Promise<AuthUser> {
+  const user = await requireUser(req)
+  const { data, error } = await db
+    .from('profiles')
+    .select('is_platform_admin, deleted_at')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  // Not-found rather than forbidden: don't advertise that the admin API exists.
+  if (!data?.is_platform_admin || data.deleted_at) throw notFound('Endpoint not found')
+  return user
 }

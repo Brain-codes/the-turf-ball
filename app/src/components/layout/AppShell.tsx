@@ -5,6 +5,7 @@ import {
   RiCalendarEventFill, RiCalendarEventLine,
   RiHome4Fill, RiHome4Line,
   RiLogoutBoxRLine,
+  RiShieldStarLine,
   RiMedalFill, RiMedalLine,
   RiSettings3Fill, RiSettings3Line,
   RiTeamFill, RiTeamLine,
@@ -42,7 +43,7 @@ function NavIcon({ active, iconLine: Line, iconFill: Fill, className }: {
 }
 
 export function AppShell() {
-  const { activeOrg, organizations, switchOrg, signOut } = useAuth()
+  const { activeOrg, organizations, switchOrg, signOut, profile } = useAuth()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(RAIL_COLLAPSED_KEY) === '1',
@@ -153,6 +154,19 @@ export function AppShell() {
         </div>
 
         <div className="space-y-1 border-t border-pitch-700 pt-3">
+          {profile?.is_platform_admin && (
+            <NavLink
+              to="/admin"
+              title={collapsed ? 'Super admin' : undefined}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14.5px] text-volt-400 hover:text-volt-300',
+                collapsed && 'justify-center px-0',
+              )}
+            >
+              <RiShieldStarLine className="h-[19px] w-[19px] shrink-0" />
+              {!collapsed && 'Super admin'}
+            </NavLink>
+          )}
           <NavLink
             to="/app/settings"
             title={collapsed ? 'Settings' : undefined}
