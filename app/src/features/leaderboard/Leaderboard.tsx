@@ -51,6 +51,9 @@ export function LeaderboardScreen() {
       />
 
       <div className="px-5">
+        <Link to="/app/h2h" className="mb-4 inline-block text-[13px] text-volt-400 hover:underline">
+          ⚔️ Compare two players head to head →
+        </Link>
         {(data?.period?.status === 'closed' || data?.period?.positional_scoring) && (
           <div className="mb-4 flex flex-wrap gap-2">
             {data?.period?.status === 'closed' && <Badge>Final — this month is closed</Badge>}

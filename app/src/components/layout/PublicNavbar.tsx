@@ -23,6 +23,7 @@ export function PublicNavbar() {
         <div className="flex items-center gap-5">
           <Link to="/" className={linkClass(pathname === '/')}>Home</Link>
           <Link to="/leaderboard" className={linkClass(pathname.startsWith('/leaderboard'))}>Table</Link>
+          <Link to="/h2h" className={linkClass(pathname.startsWith('/h2h'))}>H2H</Link>
           <Link to="/login" className={linkClass(pathname === '/login')}>Log in</Link>
         </div>
       </div>

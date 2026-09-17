@@ -879,10 +879,16 @@ export function PlayerProfileScreen() {
 
   return (
     <div className="pb-8">
-      <div className="px-5 pt-5">
+      <div className="flex items-center justify-between px-5 pt-5">
         <button onClick={() => navigate(-1)} className="text-[14px] text-chalk-muted">
           ← Back
         </button>
+        <Link
+          to={`/app/h2h?a=${data.id}`}
+          className="rounded-full border border-pitch-700 px-3 py-1 text-[13px] text-chalk-muted hover:text-chalk"
+        >
+          ⚔️ Compare
+        </Link>
       </div>
 
       <FadeIn className="pitch-lines px-5 pb-7 pt-5 text-center">

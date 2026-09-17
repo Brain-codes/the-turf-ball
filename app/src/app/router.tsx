@@ -17,6 +17,9 @@ import { JoinTeamScreen } from '@/features/onboarding/JoinTeam'
 
 const GlobalLeaderboardScreen = lazy(() => import('@/features/public/GlobalLeaderboard').then((m) => ({ default: m.GlobalLeaderboardScreen })))
 
+const PublicHeadToHeadScreen = lazy(() => import('@/features/h2h/HeadToHead').then((m) => ({ default: m.PublicHeadToHeadScreen })))
+const MemberHeadToHeadScreen = lazy(() => import('@/features/h2h/HeadToHead').then((m) => ({ default: m.MemberHeadToHeadScreen })))
+
 const LoginScreen = lazy(() => import('@/features/auth/screens').then((m) => ({ default: m.LoginScreen })))
 const RegisterScreen = lazy(() => import('@/features/auth/screens').then((m) => ({ default: m.RegisterScreen })))
 const VerifyEmailScreen = lazy(() => import('@/features/auth/screens').then((m) => ({ default: m.VerifyEmailScreen })))
@@ -86,6 +89,7 @@ export function Router() {
       <Route path="/t/:slug/player/:playerId" element={<PublicPlayerScreen />} />
       <Route path="/t/:slug/live/:sessionId" element={<PublicLiveSessionScreen />} />
       <Route path="/leaderboard" element={<GlobalLeaderboardScreen />} />
+      <Route path="/h2h" element={<PublicHeadToHeadScreen />} />
       <Route path="/join/:token" element={<JoinScreen />} />
       <Route path="/play/:slug" element={<JoinTeamScreen />} />
 
@@ -126,6 +130,7 @@ export function Router() {
         <Route path="competitions/new" element={<NewCompetitionScreen />} />
         <Route path="competitions/:id" element={<CompetitionDetailScreen />} />
         <Route path="leaderboard" element={<LeaderboardScreen />} />
+        <Route path="h2h" element={<MemberHeadToHeadScreen />} />
         <Route path="awards" element={<AwardsScreen />} />
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<Navigate to="general" replace />} />
