@@ -23,6 +23,7 @@ import { SiteFooter } from '@/components/layout/SiteFooter'
 import { PitchCanvas } from '@/features/landing/PitchCanvas'
 import { cn } from '@/lib/cn'
 import { SITE_NAME, SITE_URL, DEFAULT_DESCRIPTION, useSeo } from '@/lib/seo'
+import { useAccountLink } from '@/components/layout/useAccountLink'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -134,12 +135,14 @@ function Lead({ children }: { children: ReactNode }) {
 }
 
 function PrimaryCta({ children = 'Start your group — free' }: { children?: ReactNode }) {
+  const account = useAccountLink()
+  const member = account.state === 'member'
   return (
     <Link
-      to="/register"
+      to={member ? account.to : '/register'}
       className="group inline-flex h-14 items-center justify-center gap-2 rounded-full bg-volt-400 px-7 text-[16px] font-semibold text-void shadow-[0_0_40px_-8px_rgb(180_255_57/0.6)] transition-all duration-200 hover:bg-volt-300 active:scale-[0.98]"
     >
-      {children}
+      {member ? account.label : children}
       <RiArrowRightLine className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1" />
     </Link>
   )
@@ -422,6 +425,7 @@ export function Landing() {
   }, [])
 
   const heroWords = ['Every', 'goal.', 'Every', 'assist.']
+  const signedOut = useAccountLink().state === 'guest'
 
   return (
     <div ref={root} className="relative min-h-dvh overflow-x-clip">
@@ -634,9 +638,11 @@ export function Landing() {
             </p>
             <div data-reveal className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <PrimaryCta>Set up your group</PrimaryCta>
-              <Link to="/login" className="inline-flex h-14 items-center px-6 text-[16px] text-chalk-muted transition-colors hover:text-chalk">
-                I already have an account
-              </Link>
+              {signedOut && (
+                <Link to="/login" className="inline-flex h-14 items-center px-6 text-[16px] text-chalk-muted transition-colors hover:text-chalk">
+                  I already have an account
+                </Link>
+              )}
             </div>
           </div>
         </Section>
