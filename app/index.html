@@ -4,15 +4,55 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#050706" />
-    <title>The Turf Ball</title>
-    <meta name="description" content="Track goals, assists and Player of the Month for your football group." />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>" />
+
+    <!-- Home-page defaults. Each route updates these as it renders (src/lib/seo.ts);
+         team and player pages get them filled in on the server (api/share.ts). -->
+    <title>The Turf Ball — Football Stats &amp; Player of the Month for Your Group</title>
+    <meta name="description" content="Free football stats app for grassroots and Sunday league groups. Record goals and assists at the pitch, get an automatic points table and Player of the Month, and share it all in one WhatsApp link." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://the-turf-ball.vercel.app/" />
+
+    <meta property="og:site_name" content="The Turf Ball" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_GB" />
+    <meta property="og:title" content="The Turf Ball — Football Stats &amp; Player of the Month for Your Group" />
+    <meta property="og:description" content="Free football stats app for grassroots and Sunday league groups. Record goals and assists at the pitch, get an automatic points table and Player of the Month, and share it all in one WhatsApp link." />
+    <meta property="og:url" content="https://the-turf-ball.vercel.app/" />
+    <meta property="og:image" content="https://the-turf-ball.vercel.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Turf Ball — Every goal. Every assist." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="The Turf Ball — Football Stats &amp; Player of the Month for Your Group" />
+    <meta name="twitter:description" content="Free football stats app for grassroots and Sunday league groups. Record goals and assists at the pitch, get an automatic points table and Player of the Month, and share it all in one WhatsApp link." />
+    <meta name="twitter:image" content="https://the-turf-ball.vercel.app/og-image.png" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "The Turf Ball",
+        "url": "https://the-turf-ball.vercel.app/",
+        "logo": "https://the-turf-ball.vercel.app/icon-512.png"
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <h1>The Turf Ball — football stats and Player of the Month for your group</h1>
+      <p>Record goals, assists, clean sheets and attendance at the pitch. The Turf Ball works out the points table and Player of the Month automatically, and shares it in one link. Free for grassroots, Sunday league and 5-a-side groups.</p>
+      <p><a href="/register">Start your group</a> · <a href="/leaderboard">See every team's table</a></p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

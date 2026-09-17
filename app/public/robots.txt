@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /onboarding
+Disallow: /join/
+Disallow: /verify-email
+Disallow: /reset-password
+Disallow: /api/
+
+Sitemap: https://the-turf-ball.vercel.app/sitemap.xml

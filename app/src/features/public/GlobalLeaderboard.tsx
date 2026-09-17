@@ -15,8 +15,8 @@ import { Link } from 'react-router-dom'
 import { api } from '@/services/client'
 import { cn } from '@/lib/cn'
 import { EmptyState, ErrorState, Input, PlayerAvatar, PlayerName, Skeleton } from '@/components/ui'
-import { FadeIn } from '@/components/motion'
-import { PublicNavbar } from '@/components/layout/PublicNavbar'
+import { PublicHero, PublicLayout } from '@/components/layout/PublicLayout'
+import { RiTrophyLine } from '@remixicon/react'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 
 interface Team {
@@ -87,18 +87,13 @@ export function GlobalLeaderboardScreen() {
   const [tab, setTab] = useState<'players' | 'teams'>('players')
 
   return (
-    <div className="min-h-dvh pb-16">
-      <PublicNavbar />
-
-      <FadeIn>
-        <header className="pitch-lines px-5 pb-8 pt-10 text-center">
-          <div className="mb-3 text-4xl">🏆</div>
-          <h1 className="text-[clamp(1.75rem,7vw,2.5rem)] leading-tight">The Turf Ball table</h1>
-          <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-chalk-muted">
-            Every public group, one table. Ranked on the real numbers.
-          </p>
-        </header>
-      </FadeIn>
+    <PublicLayout className="pb-16">
+      <PublicHero
+        icon={RiTrophyLine}
+        eyebrow="Live tables"
+        title={<>Every group. <span className="text-volt-400">One table.</span></>}
+        lead="Top scorers, assists and clean sheets across every public group on The Turf Ball, ranked on the real numbers."
+      />
 
       <div className="mx-auto max-w-4xl px-5">
         <div className="mb-5 flex gap-2">
@@ -108,11 +103,8 @@ export function GlobalLeaderboardScreen() {
 
         {tab === 'players' ? <GlobalPlayersTable /> : <GlobalTeamsTable />}
 
-        <p className="mt-10 text-center text-[12.5px] text-chalk-faint">
-          Powered by <span className="text-chalk-muted">The Turf Ball</span>
-        </p>
       </div>
-    </div>
+    </PublicLayout>
   )
 }
 

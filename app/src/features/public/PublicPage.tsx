@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { SITE_URL, useSeo } from '@/lib/seo'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/services/client'
 import { cn } from '@/lib/cn'
@@ -16,7 +17,8 @@ import {
   RankBadge, SectionTitle, Skeleton, StatTile,
 } from '@/components/ui'
 import { CountUp, FadeIn, Stagger, StaggerItem } from '@/components/motion'
-import { PublicNavbar } from '@/components/layout/PublicNavbar'
+import { PublicLayout } from '@/components/layout/PublicLayout'
+import { BrandMark } from '@/components/layout/PublicNavbar'
 import { points, shortDate } from '@/lib/format'
 import type { PublicPageData, PublicSessionData } from '@/types'
 
@@ -57,6 +59,26 @@ export function PublicPageScreen() {
     refetchInterval: 60_000,
   })
 
+  const org = data?.organization
+  useSeo({
+    title: org ? `${org.name} — League Table, Top Scorers & Player of the Month` : 'Team table',
+    description: org
+      ? `${org.name}${org.venue ? ` at ${org.venue}` : ''}: live points table, top scorers, assists and Player of the Month, updated after every game.`
+      : undefined,
+    image: org?.logo_url || undefined,
+    noindex: !isLoading && !data,
+    jsonLd: org
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'SportsTeam',
+          name: org.name,
+          sport: 'Football',
+          url: `${SITE_URL}/t/${slug}`,
+          ...(org.logo_url ? { logo: org.logo_url } : {}),
+        }
+      : undefined,
+  })
+
   if (isLoading) return <PublicSkeleton />
 
   if (error || !data) {
@@ -91,22 +113,24 @@ export function PublicPageScreen() {
   }
 
   return (
-    <div className="min-h-dvh pb-24">
-      <PublicNavbar />
+    <PublicLayout className="pb-24">
       {/* Hero */}
       <FadeIn>
-        <header className="pitch-lines px-5 pb-8 pt-10 text-center">
+        <header className="px-5 pb-10 pt-12 text-center sm:pt-16">
           {data.organization.logo_url ? (
             <img
               src={data.organization.logo_url}
-              alt=""
-              className="mx-auto mb-4 h-16 w-16 rounded-2xl object-cover"
+              alt={`${data.organization.name} logo`}
+              width={72}
+              height={72}
+              className="mx-auto mb-5 h-[72px] w-[72px] rounded-2xl border border-volt-400/30 object-cover shadow-[0_0_40px_-10px_rgb(180_255_57/0.5)]"
             />
           ) : (
-            <div className="mb-4 text-4xl">⚽</div>
+            <BrandMark className="mx-auto mb-5 h-14 w-14 drop-shadow-[0_0_24px_rgb(180_255_57/0.35)]" />
           )}
 
-          <h1 className="text-[clamp(1.75rem,7vw,2.5rem)] leading-tight">
+          <p className="font-display text-[12px] font-semibold uppercase tracking-[0.22em] text-volt-400">Group table</p>
+          <h1 className="mt-3 text-[clamp(2.25rem,8vw,4rem)] leading-[1]">
             {data.organization.name}
           </h1>
 
@@ -332,7 +356,7 @@ export function PublicPageScreen() {
           </Button>
         </div>
       </div>
-    </div>
+    </PublicLayout>
   )
 }
 
@@ -448,6 +472,23 @@ export function PublicPlayerScreen() {
     enabled: !!slug && !!playerId,
   })
 
+  useSeo({
+    title: data ? `${data.player.display_name} — ${data.organization.name} Player Stats` : 'Player stats',
+    description: data
+      ? `${data.player.display_name}'s goals, assists, points and awards for ${data.organization.name}. Live stats on The Turf Ball.`
+      : undefined,
+    type: 'profile',
+    noindex: !isLoading && !data,
+    jsonLd: data
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'Person',
+          name: data.player.display_name,
+          memberOf: { '@type': 'SportsTeam', name: data.organization.name, url: `${SITE_URL}/t/${slug}` },
+        }
+      : undefined,
+  })
+
   if (isLoading) {
     return (
       <div className="px-5 pt-10">
@@ -460,22 +501,21 @@ export function PublicPlayerScreen() {
   if (!data) return <EmptyState icon="⚽" title="Player not found" />
 
   return (
-    <div className="min-h-dvh pb-10">
-      <PublicNavbar />
+    <PublicLayout className="pb-10">
       <div className="px-5 pt-5">
         <button onClick={goBack} className="text-[14px] text-chalk-muted">
           ← {data.organization.name}
         </button>
       </div>
 
-      <FadeIn className="pitch-lines px-5 pb-8 pt-6 text-center">
+      <FadeIn className="px-5 pb-10 pt-6 text-center">
         <PlayerAvatar
           name={data.player.display_name}
           photoUrl={data.player.photo_url}
           size="xl"
           className="mx-auto"
         />
-        <h1 className="mt-4 text-3xl">{data.player.display_name}</h1>
+        <h1 className="mt-5 text-[clamp(2rem,7vw,3.25rem)] leading-[1.02]">{data.player.display_name}</h1>
         {data.player.whatsapp_nickname && data.player.whatsapp_nickname.trim() !== data.player.display_name.trim() && (
           <p className="mt-0.5 text-[12px] text-chalk-faint/70">{data.player.whatsapp_nickname}</p>
         )}
@@ -617,7 +657,7 @@ export function PublicPlayerScreen() {
           </section>
         )}
       </div>
-    </div>
+    </PublicLayout>
   )
 }
 
@@ -892,6 +932,9 @@ export function PublicLiveSessionScreen() {
     refetchInterval: 8_000,
   })
 
+  // Live pages are momentary — useful to share, pointless to keep in search.
+  useSeo({ title: data ? `Live — ${data.organization.name}` : 'Live scores', noindex: true })
+
   const currentMatch = data?.matches[data.matches.length - 1]
   const isLive = data?.session.status === 'live'
   const elapsed = useLiveClock(currentMatch?.started_at, !!isLive)
@@ -930,8 +973,7 @@ export function PublicLiveSessionScreen() {
   const topAssister = [...statRows].sort((a, b) => b.assists - a.assists)[0]
 
   return (
-    <div className="min-h-dvh pb-10">
-      <PublicNavbar />
+    <PublicLayout className="pb-10">
       <div className="px-5 pt-5">
         <button onClick={goBack} className="text-[14px] text-chalk-muted">
           ← {data.organization.name}
@@ -1096,6 +1138,6 @@ export function PublicLiveSessionScreen() {
           Following along as a guest — view only.
         </p>
       </div>
-    </div>
+    </PublicLayout>
   )
 }
