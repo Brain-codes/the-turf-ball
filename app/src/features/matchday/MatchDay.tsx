@@ -744,7 +744,7 @@ function StillGoingPrompt({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Paused for inactivity — the session went 20 minutes without anything      */
+/* Paused for inactivity — the session went 30 minutes without anything      */
 /* being recorded, so it stopped being live. Nothing was finalised: the      */
 /* match, its roster and its events are all exactly where they were. The     */
 /* only two ways out are the organizer's, not the system's.                  */
@@ -777,9 +777,9 @@ function SessionPausedStep({
       <div>
         <h1 className="mb-1 text-2xl text-chalk">Session paused</h1>
         <p className="text-[14px] text-chalk-muted">
-          Nothing was recorded for 20 minutes, so this session was paused
+          Nothing was recorded for 30 minutes, so this session was paused
           {pausedAt ? ` at ${pausedTime(pausedAt)}` : ''}. It hasn't been ended — everything
-          recorded is still here.
+          recorded is still here. If it stays untouched for 24 hours it will end by itself.
         </p>
       </div>
 

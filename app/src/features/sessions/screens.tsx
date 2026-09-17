@@ -536,9 +536,10 @@ export function SessionDetailScreen() {
         {session.status === 'paused' && (
           <Card className="mb-5 border-card-yellow/30 bg-card-yellow/5">
             <p className="text-[13.5px] leading-relaxed text-chalk">
-              This session was paused because nothing was recorded for 20 minutes
+              This session was paused because nothing was recorded for 30 minutes
               {session.paused_at ? ` (at ${time(session.paused_at)})` : ''}. It hasn't been
-              ended — everything recorded so far is safe. Resume it, or end it yourself.
+              ended — everything recorded so far is safe. Resume it, or end it yourself —
+              if nobody does, it ends by itself after 24 hours with nothing recorded.
             </p>
             <div className="mt-3 flex gap-2">
               <Button size="sm" fullWidth onClick={() => navigate(`/app/sessions/${session.id}/live`)}>

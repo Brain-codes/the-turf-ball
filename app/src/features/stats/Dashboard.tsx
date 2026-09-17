@@ -94,7 +94,7 @@ export function Dashboard() {
             <span className="flex-1">
               <span className="block font-semibold text-chalk">Session paused</span>
               <span className="text-[13px] text-chalk-muted">
-                Nothing recorded for 20 minutes — resume it, or end it
+                Nothing recorded for 30 minutes — resume it, or end it
               </span>
             </span>
             <span className="text-chalk-muted">→</span>

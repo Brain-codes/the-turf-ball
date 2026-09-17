@@ -177,7 +177,8 @@ export async function keepAlive(ctx: Ctx): Promise<Response> {
 }
 
 /**
- * Un-pause a session the scheduler put to sleep after 20 quiet minutes.
+ * Un-pause a session the scheduler put to sleep after 30 quiet minutes
+ * (it ends one outright after 24 hours — see 20260917000000).
  *
  * Deliberately restores it exactly as it was — the matches were never
  * touched, so the same match picks straight back up with its clock and its
