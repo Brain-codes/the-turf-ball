@@ -7,7 +7,7 @@
 import type { SupabaseClient } from './db.ts'
 import { AppError } from './errors.ts'
 
-export type FeatureKey = 'new_groups' | 'public_tables' | 'head_to_head' | 'self_join_links' | 'contact_form'
+export type FeatureKey = 'new_groups' | 'public_tables' | 'head_to_head' | 'self_join_links' | 'contact_form' | 'gallery'
 
 export async function featureEnabled(db: SupabaseClient, key: FeatureKey): Promise<boolean> {
   const { data, error } = await db.from('platform_features').select('enabled').eq('key', key).maybeSingle()

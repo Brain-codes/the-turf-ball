@@ -49,7 +49,7 @@ export async function me(ctx: Ctx): Promise<Response> {
 
   const { data: memberships } = await ctx.db
     .from('organization_members')
-    .select('role, organizations!inner(id, name, short_name, slug, logo_url, deleted_at)')
+    .select('role, organizations!inner(id, name, short_name, slug, logo_url, gallery_enabled, deleted_at)')
     .eq('user_id', user.id)
     .eq('status', 'active')
     .is('organizations.deleted_at', null)

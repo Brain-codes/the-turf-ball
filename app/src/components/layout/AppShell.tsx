@@ -1,8 +1,9 @@
 import { useEffect, useState, type ComponentType } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   RiBarChart2Fill, RiBarChart2Line,
   RiCalendarEventFill, RiCalendarEventLine,
+  RiGalleryFill, RiGalleryLine,
   RiHome4Fill, RiHome4Line,
   RiLogoutBoxRLine,
   RiShieldStarLine,
@@ -22,13 +23,17 @@ import { cn } from '@/lib/cn'
 
 type IconType = ComponentType<{ className?: string }>
 
-const NAV: { to: string; label: string; end?: boolean; iconLine: IconType; iconFill: IconType }[] = [
+type NavItem = { to: string; label: string; end?: boolean; iconLine: IconType; iconFill: IconType }
+
+const NAV: NavItem[] = [
   { to: '/app', label: 'Home', end: true, iconLine: RiHome4Line, iconFill: RiHome4Fill },
   { to: '/app/players', label: 'Squad', iconLine: RiTeamLine, iconFill: RiTeamFill },
   { to: '/app/sessions', label: 'Sessions', iconLine: RiCalendarEventLine, iconFill: RiCalendarEventFill },
   { to: '/app/leaderboard', label: 'Table', iconLine: RiBarChart2Line, iconFill: RiBarChart2Fill },
   { to: '/app/awards', label: 'Awards', iconLine: RiTrophyLine, iconFill: RiTrophyFill },
 ]
+
+const GALLERY: NavItem = { to: '/app/gallery', label: 'Gallery', iconLine: RiGalleryLine, iconFill: RiGalleryFill }
 
 const RAIL_COLLAPSED_KEY = 'turfball:rail-collapsed'
 
@@ -52,6 +57,17 @@ export function AppShell() {
   useEffect(() => {
     localStorage.setItem(RAIL_COLLAPSED_KEY, collapsed ? '1' : '0')
   }, [collapsed])
+
+  // Uploaders only have the gallery. With the gallery on, it takes Awards'
+  // slot on the 5-tab mobile bar (Awards stays one tap away from the Table).
+  const galleryOn = !!activeOrg?.gallery_enabled
+  const isUploader = activeOrg?.role === 'uploader'
+  const nav = isUploader ? [GALLERY] : NAV
+  const mobileNav = isUploader ? [GALLERY] : galleryOn ? [...NAV.filter((i) => i.to !== '/app/awards'), GALLERY] : NAV
+
+  if (isUploader && !/^\/app\/(gallery|settings)/.test(location.pathname)) {
+    return <Navigate to="/app/gallery" replace />
+  }
 
   return (
     <div className="min-h-dvh md:flex">
@@ -93,7 +109,7 @@ export function AppShell() {
         )}
 
         <nav className="flex-1 space-y-1">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -127,7 +143,33 @@ export function AppShell() {
         {/* Secondary — kept off the 5-item mobile tab bar; a competition is
             occasional, not a daily destination, so it lives one tap away
             from Sessions on mobile instead of claiming a permanent tab. */}
+        {!isUploader && (
         <div className="space-y-1 border-t border-pitch-700 pt-3">
+          {galleryOn && (
+            <NavLink
+              to="/app/gallery"
+              title={collapsed ? 'Gallery' : undefined}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14.5px]',
+                  collapsed && 'justify-center px-0',
+                  isActive ? 'bg-pitch-800 text-chalk' : 'text-chalk-muted hover:text-chalk',
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <NavIcon
+                    active={isActive}
+                    iconLine={RiGalleryLine}
+                    iconFill={RiGalleryFill}
+                    className={cn('h-[19px] w-[19px] shrink-0', isActive ? 'text-volt-400' : 'opacity-80')}
+                  />
+                  {!collapsed && 'Gallery'}
+                </>
+              )}
+            </NavLink>
+          )}
           <NavLink
             to="/app/competitions"
             title={collapsed ? 'Competitions' : undefined}
@@ -152,6 +194,7 @@ export function AppShell() {
             )}
           </NavLink>
         </div>
+        )}
 
         <div className="space-y-1 border-t border-pitch-700 pt-3">
           {profile?.is_platform_admin && (
@@ -212,7 +255,7 @@ export function AppShell() {
       {/* Mobile tabs */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-pitch-700 bg-pitch-900/95 backdrop-blur-lg md:hidden">
         <div className="safe-bottom flex">
-          {NAV.map((item) => {
+          {mobileNav.map((item) => {
             const active = item.end
               ? location.pathname === item.to
               : location.pathname.startsWith(item.to)

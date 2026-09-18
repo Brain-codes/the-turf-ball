@@ -1,4 +1,4 @@
-export type Role = 'owner' | 'admin' | 'recorder'
+export type Role = 'owner' | 'admin' | 'recorder' | 'uploader'
 export type PlayerPosition =
   | 'GK' | 'RB' | 'CB' | 'LB' | 'CDM' | 'CM' | 'CAM' | 'LM' | 'RM' | 'LW' | 'RW' | 'ST' | 'CF'
 export type PlayerStatus = 'active' | 'inactive' | 'guest' | 'pending'
@@ -38,6 +38,7 @@ export interface Organization {
   timezone: string
   is_public: boolean
   role?: Role
+  gallery_enabled?: boolean
   settings?: OrgSettings
   current_period?: Period
   public_page?: PublicPage

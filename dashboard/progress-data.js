@@ -4,8 +4,8 @@
 window.PROGRESS = {
   project: "The Turf Ball",
   tagline: "Football stats & Player of the Month, automatically",
-  updated: "17 Sep 2026",
-  currentlyDoing: "Super admin area and group logos. The server side is live: adenugaadewumi01@gmail.com is the super admin, and every admin action is checked on the server. The admin screens and logo upload are built but not yet clicked through by a person, because that needs the admin to sign in.",
+  updated: "18 Sep 2026",
+  currentlyDoing: "Team galleries on Cloudinary. The server side is live and switched off for every group until you turn it on in Super admin → Storage. The screens are built. The public gallery was checked in the browser with sample photos. Uploading has not been tried yet because no Cloudinary account is connected.",
 
   // status: "done" | "doing" | "todo" | "blocked"
   phases: [
@@ -291,6 +291,22 @@ window.PROGRESS = {
         { name: "Super admin area", plain: "One account (adenugaadewumi01@gmail.com) can open Super admin from the sidebar or Settings, Account. It shows platform totals and a sign-ups chart, every group (with a suspend or restore button), every account (block or unblock sign-in, make or remove super admin), on/off switches for platform features, the contact form inbox, and a log of every admin change.", tech: "Migration 20260917130000 (is_platform_admin granted, platform_features, admin_actions, org-logos bucket). Edge Function `admin` (requireSuperAdmin answers 404 to everyone else). Suspension enforced in requireMember and on public pages. Feature switches enforced server-side in public/contact/organizations; GET /public/features lets the app hide links. Queries verified against the live DB; anon access verified blocked.", status: "doing" },
         { name: "Group logos", plain: "Groups can add a logo or badge, which is optional: during setup (step 1) and any time in Settings, General. It shows on the public page, the tables and the admin area.", tech: "LogoPicker (WebP, 400px, keeps transparency); organizations create/update accept logo_base64, logo_url: null removes; arbitrary logo URLs no longer accepted. Upload tested live against the org-logos bucket; SVG rejected.", status: "doing" }
       ]
+    },
+    {
+      id: 90,
+      name: "Team galleries (Cloudinary)",
+      plain: "Every team gets its own photo and video gallery, stored on Cloudinary accounts the team brings, with a public link anyone can open.",
+      status: "doing",
+      tasks: [
+        { name: "Storage accounts per team", plain: "Team owners and admins (and the super admin) add Cloudinary accounts. When one gets to 95% full, uploads move to the next.", tech: "cloudinary_accounts table; pickAccount() in _shared/cloudinary.ts picks the first enabled account under its threshold, refreshing usage older than 30 min; pending_bytes counts uploads between checks.", status: "done" },
+        { name: "Keeping the keys safe", plain: "The API secret is checked with Cloudinary, locked with strong encryption, and never shown again to anyone. Phones only get one-file upload passes.", tech: "AES-256-GCM (_shared/secretBox.ts), key in the GALLERY_ENCRYPTION_KEY function secret, not the DB. Signed uploads carry public_id + allowed_formats and expire. Deletes, compression and zip links are server-only.", status: "done" },
+        { name: "Storage screen (task manager)", plain: "One screen showing each account's fill level, what it stores, views and downloads, file counts, and which account is taking uploads. The team sees their own, and the super admin sees the same screen for any team.", tech: "StoragePanel.tsx used at /app/gallery?tab=storage and /admin/storage/:id; GET gallery/storage/:orgId.", status: "done" },
+        { name: "Uploading", plain: "Drop photos and videos anywhere. They go straight to Cloudinary with a progress bar each. Big videos go up in pieces, and photos are shrunk first to save space.", tech: "manager/uploads.ts: sign → XHR direct upload (10 MB chunks over 20 MB) → confirm (server looks the file up on Cloudinary).", status: "done" },
+        { name: "Albums, select, move, compress, delete", plain: "Albums can be public or members-only. Select many at once to download, move, compress or delete. Deleted files sit in a trash for 30 days, then disappear for good.", tech: "gallery function media/* routes; daily pg_cron → pg_net → cron/purge also removes abandoned uploads.", status: "done" },
+        { name: "Uploader role", plain: "A new member role that can only use the gallery.", tech: "member_role 'uploader' ranks below recorder, so every other endpoint refuses it.", status: "done" },
+        { name: "Public gallery /g/your-team", plain: "3D ring of your best photos, albums, a masonry grid, full-screen viewer, hearts and downloads, all without signing up.", tech: "PublicGallery.tsx + heroRing.ts (three.js + GSAP), anonymous visitor id for favourites, signed Cloudinary zip links for bulk download.", status: "done" },
+        { name: "Tried with a real Cloudinary account", plain: "Connect a real account, upload a photo and a video, and check them on the public link.", tech: "Needs real Cloudinary keys and a signed-in admin.", status: "todo" }
+      ]
     }
   ],
 
@@ -374,10 +390,19 @@ window.PROGRESS = {
     { time: "17 Sep 2026", text: "TESTED: generated the image in the browser with a real player photo and it drew correctly. App type-checks and builds; server change is live. Not yet tried: the phone share sheet itself (needs a real phone).", kind: "done" },,
     { time: "17 Sep 2026", text: "New 3D landing page built, plus titles, descriptions and share previews for every page. Checked in the preview on desktop and phone. Not deployed yet.", kind: "done" },
     { time: "17 Sep 2026", text: "Landing page now scrolls in sync and runs lighter. Other public pages restyled to match. Contact form added with spam protection. Its server side is live and was tested against real traffic rules.", kind: "done" },
-    { time: "17 Sep 2026", text: "Super admin and group logos built. Database and server changes are live and tested. The screens still need a click-through by the admin account.", kind: "done" }
+    { time: "17 Sep 2026", text: "Super admin and group logos built. Database and server changes are live and tested. The screens still need a click-through by the admin account.", kind: "done" },
+    { time: "18 Sep 2026", text: "YOU ASKED: a gallery for every team on Cloudinary. Built and live on the server: storage accounts per team that switch over at 95%, keys locked with encryption, a storage screen shared by the team and the super admin, drag-and-drop uploads, albums (public or members-only), select many to download, move, compress or delete, a 30-day trash that empties itself, an Uploader role, and a public gallery at /g/your-team with a 3D photo ring, hearts and downloads, no sign-up needed.", kind: "done" },
+    { time: "18 Sep 2026", text: "TESTED: database change applied, gallery server live, both scheduled jobs (hourly usage check, nightly trash clear-out) ran against your live project and succeeded, and every team-only address turns away people who aren't logged in. Checked the public gallery in the browser on desktop and phone using Cloudinary's sample photos. App type-checks and builds.", kind: "done" },
+    { time: "18 Sep 2026", text: "SETBACK, fixed: the scheduled jobs were first turned away by Supabase's front door because they don't carry a login. The gallery now checks every caller itself, and the jobs use their own secret.", kind: "issue" },
+    { time: "18 Sep 2026", text: "TUNED FOR THE FREE CLOUDINARY PLAN (from your plan notes): uploads no longer use up Cloudinary's 500-an-hour behind-the-scenes request limit. Videos over 100 MB and photos over 10 MB are stopped on the phone with a clear message, instead of failing after a long upload. Each photo now has 2 sizes instead of up to 6, and downloads reuse one saved version, so far fewer credits go on edits. The storage screen explains that views and edits only count for the last 30 days.", kind: "done" },
+    { time: "18 Sep 2026", text: "YOU ASKED: videos now play at 720p by default, which is about half the data of full quality, so each play costs the team fewer Cloudinary credits. An HD button on the video switches to full quality and carries on from the same second. Checked in the browser with a sample video.", kind: "done" },
+    { time: "18 Sep 2026", text: "YOU ASKED: more storage services besides Cloudinary. Built and live: when adding storage you now pick the service first (Cloudinary, ImageKit, Cloudflare R2, Backblaze B2 or Bunny.net), then paste its keys, with setup steps for each. Teams can mix services. Photos and videos fill accounts in order separately, because Bunny takes videos only. Keys are checked with the service before saving and locked the same way as before. For R2 and B2 we also check the bucket is public and allows uploads from the site.", kind: "done" },
+    { time: "18 Sep 2026", text: "YOUTUBE LEFT OUT: uploading to YouTube needs each team to sign in with Google, and YouTube keeps videos from new apps private until Google reviews the app. Pasting YouTube links can be added separately if wanted.", kind: "note" },
+    { time: "18 Sep 2026", text: "TESTED: the live Sunday Ballers gallery kept working through the change (both files load, the Cloudinary account still refreshes with its old key). The R2/B2 upload signing matches Amazon's official test example. NOT yet tried: ImageKit, R2, B2 and Bunny with real accounts, because no keys exist yet.", kind: "done" }
   ],
 
   blockers: [
+    "New storage services (ImageKit, R2, Backblaze, Bunny) are built but untried with real accounts. Galleries are OFF for every team until you switch one on in Super admin → Storage. Uploading, the storage screen and the team gallery haven't been tried with a real Cloudinary account or a signed-in person yet.",
     "Removed on 17 Sep, at your request: the Tolulope Emmanuel account and the test account, with their two copies of Sunday Ballers. They are hidden now and erased for good on 17 October. If either signs back in before then, the app restores that account and its group — delete them in Supabase → Authentication if you need that closed off sooner.",
     "Position points and the monthly attendance switch are live but haven't been clicked through by a person yet. 32 players still need a position set.",
     "Penalty saves and clean sheets are built and fully tested against a scratch copy of the database, but the migration has NOT been run on your live project yet. Nothing about them is active until that push happens.",
