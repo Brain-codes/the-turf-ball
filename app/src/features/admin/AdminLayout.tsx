@@ -7,6 +7,7 @@ import { Navigate, NavLink, Outlet } from 'react-router-dom'
 import {
   RiArrowLeftLine,
   RiDashboardLine,
+  RiHardDrive3Line,
   RiHistoryLine,
   RiMailLine,
   RiShieldStarLine,
@@ -23,6 +24,7 @@ const NAV = [
   { to: '/admin', label: 'Overview', icon: RiDashboardLine, end: true },
   { to: '/admin/groups', label: 'Groups', icon: RiTeamLine },
   { to: '/admin/users', label: 'Users', icon: RiUserLine },
+  { to: '/admin/storage', label: 'Storage', icon: RiHardDrive3Line },
   { to: '/admin/features', label: 'Features', icon: RiToggleLine },
   { to: '/admin/messages', label: 'Messages', icon: RiMailLine },
   { to: '/admin/activity', label: 'Activity', icon: RiHistoryLine },

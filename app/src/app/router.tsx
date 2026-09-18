@@ -62,6 +62,10 @@ const AdminGroupDetail = lazy(() => import('@/features/admin/Groups').then((m) =
 const AdminUsers = lazy(() => import('@/features/admin/Users').then((m) => ({ default: m.AdminUsers })))
 const AdminFeatures = lazy(() => import('@/features/admin/Features').then((m) => ({ default: m.AdminFeatures })))
 const AdminMessages = lazy(() => import('@/features/admin/Messages').then((m) => ({ default: m.AdminMessages })))
+const AdminStorage = lazy(() => import('@/features/admin/Storage').then((m) => ({ default: m.AdminStorage })))
+const AdminStorageDetail = lazy(() => import('@/features/admin/Storage').then((m) => ({ default: m.AdminStorageDetail })))
+const GalleryManager = lazy(() => import('@/features/gallery/manager/GalleryManager').then((m) => ({ default: m.GalleryManager })))
+const PublicGalleryScreen = lazy(() => import('@/features/gallery/public/PublicGallery').then((m) => ({ default: m.PublicGalleryScreen })))
 const AdminActivity = lazy(() => import('@/features/admin/Activity').then((m) => ({ default: m.AdminActivity })))
 
 function Booting() {
@@ -104,6 +108,7 @@ export function Router() {
       <Route path="/leaderboard" element={<GlobalLeaderboardScreen />} />
       <Route path="/h2h" element={<PublicHeadToHeadScreen />} />
       <Route path="/contact" element={<ContactScreen />} />
+      <Route path="/g/:slug" element={<PublicGalleryScreen />} />
       <Route path="/join/:token" element={<JoinScreen />} />
       <Route path="/play/:slug" element={<JoinTeamScreen />} />
 
@@ -146,6 +151,7 @@ export function Router() {
         <Route path="leaderboard" element={<LeaderboardScreen />} />
         <Route path="h2h" element={<MemberHeadToHeadScreen />} />
         <Route path="awards" element={<AwardsScreen />} />
+        <Route path="gallery" element={<GalleryManager />} />
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<Navigate to="general" replace />} />
           <Route path="general" element={<GeneralSettings />} />
@@ -167,6 +173,8 @@ export function Router() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="features" element={<AdminFeatures />} />
         <Route path="messages" element={<AdminMessages />} />
+        <Route path="storage" element={<AdminStorage />} />
+        <Route path="storage/:id" element={<AdminStorageDetail />} />
         <Route path="activity" element={<AdminActivity />} />
       </Route>
 

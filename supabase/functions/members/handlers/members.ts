@@ -5,7 +5,7 @@ import { badRequest, conflict, notFound } from '../../_shared/errors.ts'
 import { email, oneOf, required, validate } from '../../_shared/validation.ts'
 import { audit } from '../../_shared/helpers.ts'
 
-const ROLES = ['admin', 'recorder'] as const
+const ROLES = ['admin', 'recorder', 'uploader'] as const
 
 export async function listMembers(ctx: Ctx): Promise<Response> {
   const member = await requireMember(ctx.req, ctx.db, 'admin')

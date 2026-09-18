@@ -23,10 +23,11 @@ export interface AuthUser {
 export interface MemberContext {
   user: AuthUser
   organizationId: string
-  role: 'owner' | 'admin' | 'recorder'
+  role: 'owner' | 'admin' | 'recorder' | 'uploader'
 }
 
-const ROLE_RANK: Record<string, number> = { recorder: 1, admin: 2, owner: 3 }
+// uploader ranks below recorder: it can reach the gallery and nothing else.
+const ROLE_RANK: Record<string, number> = { uploader: 0, recorder: 1, admin: 2, owner: 3 }
 
 /** Verify the bearer token. Throws 401 if absent or invalid. */
 export async function requireUser(req: Request): Promise<AuthUser> {
@@ -56,7 +57,7 @@ export async function requireUser(req: Request): Promise<AuthUser> {
 export async function requireMember(
   req: Request,
   db: SupabaseClient,
-  minRole: 'owner' | 'admin' | 'recorder' = 'recorder',
+  minRole: 'owner' | 'admin' | 'recorder' | 'uploader' = 'recorder',
   explicitOrgId?: string,
 ): Promise<MemberContext> {
   const user = await requireUser(req)

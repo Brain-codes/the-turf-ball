@@ -1,3 +1,4 @@
+import { RiArrowRightSLine } from '@remixicon/react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -49,6 +50,10 @@ export function LeaderboardScreen() {
           ) : undefined
         }
       />
+      {/* Awards lives off the mobile tab bar when the gallery takes its slot. */}
+      <Link to="/app/awards" className="mx-5 -mt-2 mb-3 inline-flex min-h-11 items-center gap-1 text-[14px] text-volt-400 md:hidden">
+        See awards <RiArrowRightSLine className="h-4 w-4" />
+      </Link>
 
       <div className="px-5">
         <Link to="/app/h2h" className="mb-4 inline-block text-[13px] text-volt-400 hover:underline">

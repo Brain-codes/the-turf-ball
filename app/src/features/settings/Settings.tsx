@@ -683,7 +683,7 @@ export function MembersSettings() {
   const { activeOrg } = useAuth()
   const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'admin' | 'recorder'>('recorder')
+  const [role, setRole] = useState<'admin' | 'recorder' | 'uploader'>('recorder')
   const [inviteLink, setInviteLink] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -733,9 +733,10 @@ export function MembersSettings() {
               />
             </Field>
             <Field label="What can they do?">
-              <Select value={role} onChange={(e) => setRole(e.target.value as 'admin' | 'recorder')}>
+              <Select value={role} onChange={(e) => setRole(e.target.value as 'admin' | 'recorder' | 'uploader')}>
                 <option value="recorder">Record match events only</option>
                 <option value="admin">Manage squad and sessions</option>
+                {activeOrg?.gallery_enabled && <option value="uploader">Upload photos and videos only</option>}
               </Select>
             </Field>
             {error && <p className="text-[14px] text-card-red">{error}</p>}
@@ -781,7 +782,7 @@ export function MembersSettings() {
                     {member.profiles?.full_name ?? member.invited_email}
                   </span>
                   <span className="text-[13px] text-chalk-muted">
-                    {member.role === 'owner' ? 'Owner' : member.role === 'admin' ? 'Admin' : 'Recorder'}
+                    {member.role === 'owner' ? 'Owner' : member.role === 'admin' ? 'Admin' : member.role === 'uploader' ? 'Uploader' : 'Recorder'}
                   </span>
                 </span>
                 {member.status === 'invited' && <Badge tone="warn">Pending</Badge>}
