@@ -39,6 +39,7 @@ export interface Organization {
   is_public: boolean
   role?: Role
   gallery_enabled?: boolean
+  finance_enabled?: boolean
   settings?: OrgSettings
   current_period?: Period
   public_page?: PublicPage
@@ -107,6 +108,7 @@ export interface Player {
   last_name: string | null
   display_name: string
   whatsapp_nickname: string | null
+  phone?: string | null
   photo_url: string | null
   jersey_number: number | null
   position: PlayerPosition | null
@@ -734,4 +736,134 @@ export interface SessionReport {
   hat_tricks: { player_id: string; player: string; goals: number; first_ever: boolean }[]
   alltime: Record<string, SessionRankedEntry[]>
   headlines: string[]
+}
+
+/* -------------------------------------------------------------------------- */
+/* Finance — owner/admin only                                                  */
+/* -------------------------------------------------------------------------- */
+
+export type FinancePlan = 'monthly' | 'per_game' | 'exempt'
+export type SubState = 'active' | 'due_soon' | 'expired' | 'none'
+export type PaymentMethod = 'cash' | 'transfer' | 'card' | 'other'
+
+export interface FinanceSettings {
+  organization_id: string
+  currency: string
+  monthly_fee: number
+  game_fee: number
+  default_plan: FinancePlan
+  remind_days_before: number
+  charge_guests: boolean
+}
+
+export interface FinancePlayerRow {
+  player_id: string
+  display_name: string
+  whatsapp_nickname: string | null
+  photo_url: string | null
+  phone: string | null
+  player_status: PlayerStatus
+  plan: FinancePlan
+  monthly_fee: number
+  game_fee: number
+  charged: number
+  paid: number
+  credited: number
+  /** Positive = owes, negative = in credit. */
+  balance: number
+  sub_starts_on: string | null
+  sub_ends_on: string | null
+  sub_state: SubState
+  sub_days: number | null
+  last_payment_on: string | null
+  games_this_month: number
+}
+
+export interface FinanceOverview {
+  enabled: boolean
+  settings: FinanceSettings
+  today: string
+  month_start?: string
+  summary?: {
+    outstanding: number
+    owing_count: number
+    credit_total: number
+    collected_this_month: number
+    charged_this_month: number
+    due_soon_count: number
+    expired_count: number
+    monthly_count: number
+    per_game_count: number
+    exempt_count: number
+  }
+  trend?: { month: string; charged: number; collected: number }[]
+  players?: FinancePlayerRow[]
+}
+
+export interface FinanceEntry {
+  id: string
+  player_id?: string
+  kind: 'charge' | 'payment' | 'credit'
+  source: 'manual' | 'game' | 'subscription'
+  amount: number
+  description: string | null
+  method: PaymentMethod | null
+  entry_date: string
+  session_id?: string | null
+  subscription_id?: string | null
+  created_at: string
+  voided_at: string | null
+  void_reason: string | null
+  sessions?: { title: string | null; session_date: string } | null
+  players?: { display_name: string; photo_url: string | null } | null
+  created_by_profile?: { full_name: string | null } | null
+}
+
+export interface FinanceSubscription {
+  id: string
+  starts_on: string
+  ends_on: string
+  months: number
+  amount: number
+  created_at: string
+  voided_at: string | null
+}
+
+export interface FinancePlayerDetail {
+  player: { id: string; display_name: string; whatsapp_nickname: string | null; photo_url: string | null; phone: string | null; status: PlayerStatus }
+  settings: FinanceSettings
+  today: string
+  plan: FinancePlan
+  monthly_fee: number
+  game_fee: number
+  custom_monthly_fee: number | null
+  custom_game_fee: number | null
+  balance: number
+  charged: number
+  paid: number
+  credited: number
+  sub_starts_on: string | null
+  sub_ends_on: string | null
+  sub_state: SubState
+  sub_days: number | null
+  games_this_month: number
+  entries: FinanceEntry[]
+  subscriptions: FinanceSubscription[]
+}
+
+export interface SessionFeeRow {
+  player: { id: string; display_name: string; whatsapp_nickname: string | null; photo_url: string | null }
+  plan: FinancePlan
+  fee: number
+  paid: number
+  payment_ids: string[]
+  balance: number
+  status: 'paid' | 'unpaid' | 'part_paid' | 'covered' | 'free' | 'no_fee'
+}
+
+export interface SessionFees {
+  session_id: string
+  players: SessionFeeRow[]
+  total_due: number
+  total_paid: number
 }

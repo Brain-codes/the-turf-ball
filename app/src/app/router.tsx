@@ -53,6 +53,9 @@ const CompetitionSettings = lazy(() => import('@/features/settings/Settings').th
 const ShareSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.ShareSettings })))
 const MembersSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.MembersSettings })))
 const AccountSettings = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.AccountSettings })))
+const MoneySettings = lazy(() => import('@/features/finance/MoneySettings').then((m) => ({ default: m.MoneySettings })))
+const FinanceScreen = lazy(() => import('@/features/finance/FinanceScreen').then((m) => ({ default: m.FinanceScreen })))
+const PlayerFinanceScreen = lazy(() => import('@/features/finance/PlayerFinance').then((m) => ({ default: m.PlayerFinanceScreen })))
 const JoinScreen = lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.JoinScreen })))
 
 const AdminLayout = lazy(() => import('@/features/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })))
@@ -152,6 +155,8 @@ export function Router() {
         <Route path="h2h" element={<MemberHeadToHeadScreen />} />
         <Route path="awards" element={<AwardsScreen />} />
         <Route path="gallery" element={<GalleryManager />} />
+        <Route path="finance" element={<FinanceScreen />} />
+        <Route path="finance/:playerId" element={<PlayerFinanceScreen />} />
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<Navigate to="general" replace />} />
           <Route path="general" element={<GeneralSettings />} />
@@ -161,6 +166,7 @@ export function Router() {
           <Route path="competitions" element={<CompetitionSettings />} />
           <Route path="share" element={<ShareSettings />} />
           <Route path="members" element={<MembersSettings />} />
+          <Route path="money" element={<MoneySettings />} />
           <Route path="account" element={<AccountSettings />} />
         </Route>
       </Route>

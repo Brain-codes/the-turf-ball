@@ -13,6 +13,7 @@ import { SessionReport } from './SessionReport'
 import { cn } from '@/lib/cn'
 import { BAND_LABEL, countdown, fullDate, shortDate, time } from '@/lib/format'
 import { sessionCounted } from '@/types'
+import { SessionFeesPanel } from '@/features/finance/SessionFeesPanel'
 import type { Attendance, Competition, MatchEvent, Player, Session, UpcomingSlot } from '@/types'
 
 const EDIT_WINDOW_HOURS = 5
@@ -692,6 +693,8 @@ export function SessionDetailScreen() {
             <AttendanceList attendance={present} />
           </section>
         )}
+
+        {present.length > 0 && id && <SessionFeesPanel sessionId={id} />}
 
         {!isCompleted && (
           <Button size="xl" fullWidth onClick={() => navigate(`/app/sessions/${id}/live`)}>

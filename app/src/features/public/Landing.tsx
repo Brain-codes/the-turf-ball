@@ -15,6 +15,7 @@ import {
   RiTimerLine,
   RiTrophyLine,
   RiUserAddLine,
+  RiWallet3Line,
   RiWhatsappLine,
   RiWifiOffLine,
 } from '@remixicon/react'
@@ -75,6 +76,10 @@ const FAQS = [
   {
     q: 'Can a defender’s goal be worth more than a striker’s?',
     a: 'Yes. Position-based scoring is built in. By default a goal is worth 5 for a forward, 6 for a midfielder and 7 for a defender or goalkeeper, and you can change every number.',
+  },
+  {
+    q: 'Can it keep track of who has paid for the pitch?',
+    a: 'Yes, if you switch it on. Players can pay monthly, from the day they joined, or pay each time they play. Game fees are added when you tick someone in, you record payments as they come in, and you can send a WhatsApp reminder when a month is about to run out. Only the group’s admins can see any of it.',
   },
   {
     q: 'Is it only for 5-a-side?',
@@ -281,6 +286,45 @@ function AwardMock() {
       <div className="relative mt-5 flex flex-wrap justify-center gap-2">
         {AWARDS.slice(1).map((a) => (
           <span key={a} className="rounded-full border border-pitch-600 px-3 py-1.5 text-[12px] text-chalk-muted">{a}</span>
+        ))}
+      </div>
+    </Glass>
+  )
+}
+
+function MoneyMock() {
+  const rows: [string, string, string, 'warn' | 'ok' | 'due'][] = [
+    ['Tunde', 'Monthly · paid until 16 Oct', '—', 'ok'],
+    ['Chidi', 'Pay as you play · 3 games', '₦6,000', 'warn'],
+    ['Seyi', 'Monthly · due in 2 days', '₦15,000', 'due'],
+  ]
+  return (
+    <Glass className="p-5 sm:p-6">
+      <p className="flex items-center gap-2 text-[13px] text-chalk-muted"><RiWallet3Line className="h-4 w-4 text-volt-400" /> Money · September</p>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-void/50 p-4">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-chalk-faint">Owed to the group</p>
+          <p className="tabular mt-2 font-display text-2xl text-card-yellow">₦21,000</p>
+        </div>
+        <div className="rounded-2xl bg-void/50 p-4">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-chalk-faint">Collected</p>
+          <p className="tabular mt-2 font-display text-2xl text-volt-400">₦183,000</p>
+          <div className="mt-2 h-1.5 rounded-full bg-pitch-700"><div className="h-full w-[88%] rounded-full bg-volt-400" /></div>
+        </div>
+      </div>
+      <div className="mt-4 divide-y divide-pitch-700 rounded-2xl border border-pitch-700">
+        {rows.map(([name, line, owed, tone]) => (
+          <div key={name} className="flex items-center gap-3 px-4 py-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-pitch-700 text-[12px] font-semibold">{name[0]}</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px]">{name}</p>
+              <p className={cn('text-[12px]', tone === 'due' ? 'text-card-yellow' : 'text-chalk-faint')}>{line}</p>
+            </div>
+            <p className={cn('tabular text-[14px]', tone === 'ok' ? 'text-chalk-faint' : 'text-card-yellow')}>{owed}</p>
+            {tone === 'due' && (
+              <span className="flex h-8 items-center gap-1 rounded-lg bg-[#25D366]/15 px-2.5 text-[12px] text-[#25D366]"><RiWhatsappLine className="h-3.5 w-3.5" /> Remind</span>
+            )}
+          </div>
         ))}
       </div>
     </Glass>
@@ -587,8 +631,38 @@ export function Landing() {
         </Section>
 
         {/* 08 — Runs itself */}
+        {/* 07 — Pitch money */}
+        <Section id="money">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <Eyebrow n="07">Pitch money</Eyebrow>
+              <H2>Know who has paid for the pitch.</H2>
+              <Lead>
+                Some pay for the month, some pay each time they play. Tick a player in and their game fee is added.
+                Record a payment in two taps, and see whose month runs out this week.
+              </Lead>
+              <ul className="mt-8 space-y-3 text-[15px]">
+                {[
+                  [RiCalendarScheduleLine, 'Monthly from the day they joined: pay on the 16th, due on the 16th'],
+                  [RiWhatsappLine, 'Ready-written WhatsApp reminders, one tap each'],
+                  [RiShieldCheckLine, 'Only admins see it. Switch it off any time'],
+                ].map(([Icon, text]) => {
+                  const I = Icon as typeof RiWifiOffLine
+                  return (
+                    <li key={text as string} data-reveal className="flex items-center gap-3 text-chalk-muted">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-pitch-800"><I className="h-4 w-4 text-volt-400" /></span>
+                      {text as string}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+            <MoneyMock />
+          </div>
+        </Section>
+
         <Section id="automatic">
-          <Eyebrow n="07">Hands-off</Eyebrow>
+          <Eyebrow n="08">Hands-off</Eyebrow>
           <H2>Set it once. It runs every week.</H2>
           <div className="mt-10 grid max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[
@@ -613,7 +687,7 @@ export function Landing() {
 
         {/* 09 — FAQ */}
         <Section id="faq" className="min-h-0">
-          <Eyebrow n="08">Questions</Eyebrow>
+          <Eyebrow n="09">Questions</Eyebrow>
           <H2>Good questions.</H2>
           <div className="mt-10 max-w-2xl space-y-2.5">
             {FAQS.map((f) => (

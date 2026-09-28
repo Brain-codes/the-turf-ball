@@ -11,6 +11,7 @@ import {
   RiSettings3Fill, RiSettings3Line,
   RiTeamFill, RiTeamLine,
   RiTrophyFill, RiTrophyLine,
+  RiWallet3Fill, RiWallet3Line,
 } from '@remixicon/react'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { cn } from '@/lib/cn'
@@ -61,6 +62,8 @@ export function AppShell() {
   // Uploaders only have the gallery. With the gallery on, it takes Awards'
   // slot on the 5-tab mobile bar (Awards stays one tap away from the Table).
   const galleryOn = !!activeOrg?.gallery_enabled
+  // Money is admin-only, and only once the group has switched it on.
+  const moneyOn = !!activeOrg?.finance_enabled && (activeOrg?.role === 'owner' || activeOrg?.role === 'admin')
   const isUploader = activeOrg?.role === 'uploader'
   const nav = isUploader ? [GALLERY] : NAV
   const mobileNav = isUploader ? [GALLERY] : galleryOn ? [...NAV.filter((i) => i.to !== '/app/awards'), GALLERY] : NAV
@@ -166,6 +169,31 @@ export function AppShell() {
                     className={cn('h-[19px] w-[19px] shrink-0', isActive ? 'text-volt-400' : 'opacity-80')}
                   />
                   {!collapsed && 'Gallery'}
+                </>
+              )}
+            </NavLink>
+          )}
+          {moneyOn && (
+            <NavLink
+              to="/app/finance"
+              title={collapsed ? 'Money' : undefined}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14.5px]',
+                  collapsed && 'justify-center px-0',
+                  isActive ? 'bg-pitch-800 text-chalk' : 'text-chalk-muted hover:text-chalk',
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <NavIcon
+                    active={isActive}
+                    iconLine={RiWallet3Line}
+                    iconFill={RiWallet3Fill}
+                    className={cn('h-[19px] w-[19px] shrink-0', isActive ? 'text-volt-400' : 'opacity-80')}
+                  />
+                  {!collapsed && 'Money'}
                 </>
               )}
             </NavLink>

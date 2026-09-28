@@ -4,8 +4,8 @@
 window.PROGRESS = {
   project: "The Turf Ball",
   tagline: "Football stats & Player of the Month, automatically",
-  updated: "18 Sep 2026",
-  currentlyDoing: "Team galleries on Cloudinary. The server side is live and switched off for every group until you turn it on in Super admin → Storage. The screens are built. The public gallery was checked in the browser with sample photos. Uploading has not been tried yet because no Cloudinary account is connected.",
+  updated: "23 Sep 2026",
+  currentlyDoing: "Group money (subscriptions, game fees, who owes what) and the new tap-friendly attendance grid. Built and checked on this computer. Not on your live project yet: it needs the database change pushed and the new money backend deployed.",
 
   // status: "done" | "doing" | "todo" | "blocked"
   phases: [
@@ -293,6 +293,34 @@ window.PROGRESS = {
       ]
     },
     {
+      id: 23,
+      name: "Group money: subscriptions, game fees and who owes what",
+      plain: "Each group can switch on money tracking for itself (owner or admin, in Settings → Money). Players can pay monthly, from the day they started, or pay as they play. Game fees add themselves when someone is ticked in. Only admins ever see any of it.",
+      status: "doing",
+      starred: true,
+      tasks: [
+        { name: "Switch it on per group", plain: "Settings → Money: turn it on, set the monthly fee (e.g. ₦15,000) and the game fee (e.g. ₦3,000), pick what new players start on and how early to be reminded. Off by default. Switching it off hides it but deletes nothing.", tech: "organizations.finance_enabled (default false) + finance_settings. PATCH finance/settings, owner/admin only, audit-logged. Super admin can also kill it platform-wide via platform_features 'finance'.", status: "done" },
+        { name: "Monthly or pay as you play, and switching between them", plain: "Each player is Monthly, Pay as you play, or Free. Change it any time; it applies from the next session and what they already owe stays. A player can have their own fee if they pay a different amount.", tech: "player_finance (plan + optional monthly_fee/game_fee overrides). Missing row = group default.", status: "done" },
+        { name: "Months that keep the day they started", plain: "Pay on the 16th, due again on the 16th. Renewing carries straight on from the last month. Someone who's been away a while restarts from today. You can record 1, 2, 3 or 6 months at once, and part payments.", tech: "finance_subscriptions + finance_record_subscription() (atomic: month, its charge, optional payment, overlap check, clears covered game fees).", status: "done" },
+        { name: "Game fees add themselves", plain: "Tick a pay-as-you-play player in at a session and their fee is added. Untick them, or cancel the session, and it comes off. Monthly players who are paid up aren't charged; if their month has run out they are, and it's cleared again when you record the month.", tech: "Trigger on session_attendance and sessions calls finance_sync_game_charge(); one live game fee per player per session (partial unique index). Only charges when money is on; past sessions never back-charged.", status: "done" },
+        { name: "Nothing is ever deleted", plain: "Every charge and payment is kept. A mistake is cancelled with a reason and stays in the history, crossed out, so the numbers can always be checked.", tech: "finance_entries ledger, voided_at/void_reason, finance_void_entry() (voiding a month also brings back game fees it covered). Every write audit-logged.", status: "done" },
+        { name: "The money screen", plain: "Owed to the group, collected this month, whose month is due soon, and whose ran out. Every player as a card with their balance and one-tap Record payment, Renew and Remind. Tap a player for their full history.", tech: "/app/finance and /app/finance/:playerId. GET finance/overview (finance_player_rows() in one query), finance/players/:id, finance/activity.", status: "done" },
+        { name: "WhatsApp reminders", plain: "Remind opens WhatsApp with the message already written: whose month runs out and when, and what they owe. Add a phone number to a player and it opens their chat directly.", tech: "wa.me deep link; 080… numbers become 23480…. players.phone added (admin-only in the app).", status: "done" },
+        { name: "Collect today's fees at the session", plain: "The session page shows everyone ticked in, what this game cost them, and a big 'Paid ₦3,000' button each, with Cash or Transfer, and Undo.", tech: "SessionFeesPanel, GET finance/sessions/:id; payments carry session_id.", status: "done" },
+        { name: "On the landing page", plain: "New 'Pitch money' section and a question about it in the FAQ.", tech: "Landing.tsx section 07 + MoneyMock; later sections renumbered.", status: "done" },
+        { name: "Live on your project", plain: "Database change and money backend are live (28 Sep). Checked: the money tables and automatic game-fee rules exist, the money pages turn away anyone not logged in, and the summary ran on Sunday Ballers' 36 players without errors. Still to do: put the new screens on the website, then switch money on for Sunday Ballers and try it.", tech: "Migration 20260923120000 applied; finance + auth functions deployed (auth needed a retry after a Supabase 500). finance/* returns 401 without a user token; finance_player_rows() and org_today() invoked on the live DB. Frontend not yet deployed.", status: "doing" }
+      ]
+    },
+    {
+      id: 24,
+      name: "Bigger player cards when marking who's here",
+      plain: "You said the attendance list was so small you kept tapping the wrong person. It's now a grid of big cards, two across on a phone, with a clear gap between each, a photo, the name and a tick. Plus All / In / Not in buttons to see who's still missing.",
+      status: "done",
+      tasks: [
+        { name: "Grid instead of a list", plain: "Each player is a card about 160 × 144 on a phone (the old rows were about 26 high), 12 apart. Tapped cards turn green with a tick.", tech: "AttendanceStep in MatchDay.tsx: 2/3/4/5-column grid, border-2 cards min-h 132px, aria-pressed, touch-action: manipulation. Measured in the browser at phone width: no sideways scrolling.", status: "done" }
+      ]
+    },
+    {
       id: 90,
       name: "Team galleries (Cloudinary)",
       plain: "Every team gets its own photo and video gallery, stored on Cloudinary accounts the team brings, with a public link anyone can open.",
@@ -311,6 +339,10 @@ window.PROGRESS = {
   ],
 
   log: [
+    { time: "28 Sep 2026", text: "LIVE: money database change and backend are on your project. The login backend failed once on Supabase's side and went through on retry. Checked the live tables and ran the money summary on Sunday Ballers without errors. The website itself isn't updated yet.", kind: "done" },
+    { time: "23 Sep 2026", text: "YOU ASKED: money tracking per group. Built: monthly subscriptions from the day a player started, pay-as-you-play game fees that add themselves at attendance, payments, part payments, credits, WhatsApp reminders, a money screen, and a fees panel on each session. Only owners and admins can see it, and each group switches it on for itself.", kind: "done" },
+    { time: "23 Sep 2026", text: "TESTED on a scratch copy of the database: game fees added and removed as players are ticked and unticked, cancelled sessions clear them, recording a month clears the game fees it covers, overlapping months are refused, cancelling a month brings its game fees back, and merging duplicate players carries their money across without double-charging. Screens checked in the browser with sample data at phone size.", kind: "done" },
+    { time: "23 Sep 2026", text: "YOU ASKED: attendance cards instead of the cramped list. Done — big cards in a grid, tested at phone width.", kind: "done" },
     { time: "16 Aug 2026", text: "Project specification written and locked (SPEC.md).", kind: "done" },
     { time: "16 Aug 2026", text: "Progress dashboard created — this page.", kind: "done" },
     { time: "16 Aug 2026", text: "App skeleton created and libraries installed.", kind: "done" },
@@ -402,6 +434,7 @@ window.PROGRESS = {
   ],
 
   blockers: [
+    "Money tracking: the database and backend are live (28 Sep), but the new screens and the attendance grid aren't on the website yet, so nobody can use them until the app is deployed.",
     "New storage services (ImageKit, R2, Backblaze, Bunny) are built but untried with real accounts. Galleries are OFF for every team until you switch one on in Super admin → Storage. Uploading, the storage screen and the team gallery haven't been tried with a real Cloudinary account or a signed-in person yet.",
     "Removed on 17 Sep, at your request: the Tolulope Emmanuel account and the test account, with their two copies of Sunday Ballers. They are hidden now and erased for good on 17 October. If either signs back in before then, the app restores that account and its group — delete them in Supabase → Authentication if you need that closed off sooner.",
     "Position points and the monthly attendance switch are live but haven't been clicked through by a person yet. 32 players still need a position set.",
@@ -415,6 +448,9 @@ window.PROGRESS = {
   ],
 
   decisions: [
+    { q: "Money: how does it actually move?", a: "Settled 23 Sep: players keep paying by cash or transfer; an admin records it. No payment company.", open: false },
+    { q: "Money: who can see it?", a: "Settled 23 Sep: the group's owner and admins only. Never public, never recorders.", open: false },
+    { q: "Money: what if a monthly player's month has run out and they turn up?", a: "My call: they're charged the game fee for that session, and it's cleared automatically if you then record a month that covers the date.", open: true },
     { q: "Product name", a: "The Turf Ball — used throughout. Say the word and I'll change it.", open: true },
     { q: "Clean sheets: goalkeeper only, or the whole defending side?", a: "Settled 6 Sep — neither. The question does not apply to how you actually play. You record clean sheets by hand, per set, for whoever was at the post, and the setting that used to guess at full time has been removed. Settings → Football now just explains this.", open: false },
     { q: "Should penalty saves be separate from ordinary saves?", a: "My call: yes, separate. The database already had a general 'save' that nothing has ever recorded and nothing displays. Penalty saves are the moment your group actually argues about, so they got their own statistic rather than being lumped in. Worth 3 points by default — say the word if that should be higher or lower.", open: true },
