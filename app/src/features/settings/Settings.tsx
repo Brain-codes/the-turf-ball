@@ -84,6 +84,15 @@ function IconUser(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function IconWallet(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4.5 7.5v10a2 2 0 0 0 2 2h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-12a2 2 0 0 1-2-2 2 2 0 0 1 2-2h10.5" />
+      <circle cx="16" cy="13.5" r="1" />
+    </svg>
+  )
+}
+
 const TABS = [
   { to: '/app/settings/general', label: 'Group', hint: 'Name, venue, description', icon: IconGroup },
   { to: '/app/settings/schedule', label: 'Schedule', hint: 'Sessions & recurrence', icon: IconCalendar },
@@ -92,6 +101,7 @@ const TABS = [
   { to: '/app/settings/competitions', label: 'Competitions', hint: 'What counts to stats', icon: IconTrophy },
   { to: '/app/settings/share', label: 'Share page', hint: 'Public link & visibility', icon: IconShare },
   { to: '/app/settings/members', label: 'People', hint: 'Invites & access', icon: IconUsers },
+  { to: '/app/settings/money', label: 'Money', hint: 'Fees & subscriptions', icon: IconWallet },
   { to: '/app/settings/account', label: 'Account', hint: 'Your login', icon: IconUser },
 ]
 
@@ -113,7 +123,7 @@ export function SettingsLayout() {
       />
 
       {/* Mobile: current section picker — a scrolling pill row hides options
-          off-screen with no affordance, so this surfaces all 8 sections in
+          off-screen with no affordance, so this surfaces every section in
           one dropdown instead. */}
       <div className="mb-5 px-5 md:hidden">
         <label className="relative block">

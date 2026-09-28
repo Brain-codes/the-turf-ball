@@ -9,6 +9,7 @@ import {
 import { CountUp, FadeIn, Stagger, StaggerItem } from '@/components/motion'
 import { points, shortDate } from '@/lib/format'
 import type { DashboardData } from '@/types'
+import { MoneyGlance } from '@/features/finance/MoneyGlance'
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -121,6 +122,8 @@ export function Dashboard() {
         <StatTile label="Goals" value={data.totals.goals} accent />
         <StatTile label="Assists" value={data.totals.assists} />
       </div>
+
+      <MoneyGlance />
 
       {/* Leaderboard preview */}
       <section className="mb-7">

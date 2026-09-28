@@ -478,9 +478,11 @@ function AttendanceStep({
   })
 
   const players = [...(rosterPlayers ?? []), ...extraPlayers]
-  const filtered = players.filter((p) =>
-    p.display_name.toLowerCase().includes(search.trim().toLowerCase()),
-  )
+  const [show, setShow] = useState<'all' | 'in' | 'out'>('all')
+  const term = search.trim().toLowerCase()
+  const visible = players
+    .filter((p) => !term || p.display_name.toLowerCase().includes(term) || p.whatsapp_nickname?.toLowerCase().includes(term))
+    .filter((p) => (show === 'in' ? present.has(p.id) : show === 'out' ? !present.has(p.id) : true))
 
   /** Marks the tap moment itself as arrived_at — not a batch time applied later. */
   async function markPresent(playerId: string) {
@@ -576,45 +578,97 @@ function AttendanceStep({
         Tap a player the moment you see them — that's their arrival time.
       </p>
 
-      <Input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search players"
-        className="mb-3"
-      />
+      <div className="mb-3 flex items-center gap-2">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search players"
+          className="flex-1"
+        />
+      </div>
 
-      <div className="mb-3 min-h-0 flex-1 space-y-2 overflow-y-auto">
-        {filtered.map((player) => {
-          const isIn = present.has(player.id)
-          return (
-            <button
-              key={player.id}
-              onClick={() => toggle(player.id)}
-              className={cn(
-                'tap-target flex w-full items-center gap-3 rounded-xl border px-3.5 text-left transition-colors',
-                isIn ? 'border-volt-400 bg-volt-400/10' : 'border-pitch-700 bg-pitch-900',
-              )}
-            >
-              <span
+      {/* In / not in. Big pills: this is the one filter people use pitch-side. */}
+      <div role="tablist" aria-label="Show" className="mb-3 grid grid-cols-3 gap-2">
+        {([
+          ['all', `All ${players.length}`],
+          ['in', `In ${present.size}`],
+          ['out', `Not in ${players.length - players.filter((p) => present.has(p.id)).length}`],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={show === key}
+            onClick={() => setShow(key)}
+            className={cn(
+              'h-10 cursor-pointer rounded-full border text-[14px] font-medium transition-colors',
+              show === key ? 'border-volt-400 bg-volt-400 text-void' : 'border-pitch-700 bg-pitch-900 text-chalk-muted',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="-mx-1 mb-3 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
+        {/* Cards, not rows: a big target per player with clear space between,
+            so a thumb on a moving phone lands on the right person. */}
+        <div className="grid grid-cols-2 gap-3 min-[420px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {visible.map((player) => {
+            const isIn = present.has(player.id)
+            return (
+              <button
+                key={player.id}
+                type="button"
+                onClick={() => toggle(player.id)}
+                aria-pressed={isIn}
+                aria-label={`${player.display_name}, ${isIn ? 'here' : 'not here yet'}`}
+                style={{ touchAction: 'manipulation' }}
                 className={cn(
-                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-[12px] font-bold',
-                  isIn ? 'border-volt-400 bg-volt-400 text-void' : 'border-pitch-600 text-transparent',
+                  'relative flex min-h-[132px] cursor-pointer select-none flex-col items-center justify-center gap-2 rounded-2xl border-2 px-2 pb-3 pt-4 text-center',
+                  'transition-[background-color,border-color,transform] duration-150 active:scale-[0.97]',
+                  isIn ? 'border-volt-400 bg-volt-400/12' : 'border-pitch-700 bg-pitch-900 hover:border-pitch-600',
                 )}
               >
-                ✓
-              </span>
-              <PlayerAvatar name={player.display_name} photoUrl={player.photo_url} size="sm" />
-              <PlayerName
-                name={player.display_name}
-                whatsappNickname={player.whatsapp_nickname}
-                className="flex-1 text-[15px] text-chalk"
-              />
-            </button>
-          )
-        })}
+                <span
+                  aria-hidden
+                  className={cn(
+                    'absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 text-[12px] font-bold transition-colors',
+                    isIn ? 'border-volt-400 bg-volt-400 text-void' : 'border-pitch-600 text-transparent',
+                  )}
+                >
+                  ✓
+                </span>
+                <PlayerAvatar name={player.display_name} photoUrl={player.photo_url} size="lg" />
+                <span className="line-clamp-2 w-full break-words text-[14.5px] font-medium leading-tight text-chalk">
+                  {player.display_name}
+                </span>
+                {player.whatsapp_nickname && (
+                  <span className="-mt-1 w-full truncate text-[12px] text-chalk-muted">{player.whatsapp_nickname}</span>
+                )}
+              </button>
+            )
+          })}
 
-        {addingPlayer ? (
-          <div className="space-y-2 rounded-xl border border-pitch-700 bg-pitch-900 p-2.5">
+          {!addingPlayer && show !== 'in' && (
+            <button
+              type="button"
+              onClick={() => setAddingPlayer(true)}
+              className="flex min-h-[132px] cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-pitch-600 px-2 text-center text-[13.5px] text-chalk-muted hover:text-chalk"
+            >
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-pitch-800 text-2xl leading-none">+</span>
+              Someone not on the list
+            </button>
+          )}
+        </div>
+
+        {visible.length === 0 && !addingPlayer && (
+          <p className="py-8 text-center text-[14px] text-chalk-muted">
+            {search ? 'Nobody by that name.' : show === 'in' ? 'Nobody ticked in yet.' : 'Everyone is in.'}
+          </p>
+        )}
+
+        {addingPlayer && (
+          <div className="mt-3 space-y-2 rounded-2xl border border-pitch-700 bg-pitch-900 p-3">
             <div className="flex items-center gap-2">
               <Input
                 value={newName}
@@ -624,7 +678,7 @@ function AttendanceStep({
                 className="flex-1"
               />
               <Button
-                size="sm"
+                size="md"
                 loading={addPlayer.isPending}
                 disabled={newName.trim().length < 1 || !newPosition}
                 onClick={() => addPlayer.mutate()}
@@ -633,7 +687,7 @@ function AttendanceStep({
               </Button>
               <button
                 onClick={() => { setAddingPlayer(false); setNewName(''); setNewPosition(''); setNewOneTime(false) }}
-                className="text-[13px] text-chalk-muted"
+                className="h-11 px-2 text-[14px] text-chalk-muted"
               >
                 Cancel
               </button>
@@ -647,13 +701,6 @@ function AttendanceStep({
             </PositionSelect>
             <OneTimeToggle checked={newOneTime} onChange={setNewOneTime} />
           </div>
-        ) : (
-          <button
-            onClick={() => setAddingPlayer(true)}
-            className="tap-target flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-pitch-600 text-[14px] text-chalk-muted"
-          >
-            + Someone not on the list just arrived
-          </button>
         )}
       </div>
 
