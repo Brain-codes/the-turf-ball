@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { format, parseISO } from 'date-fns'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
   RiAddLine, RiAlarmWarningLine, RiArrowRightSLine, RiCheckboxCircleLine,
@@ -10,7 +11,7 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { PageHeader } from '@/components/layout/AppShell'
 import { Badge, Button, Card, EmptyState, ErrorState, Input, PlayerAvatar, SectionTitle, Skeleton } from '@/components/ui'
 import { cn } from '@/lib/cn'
-import type { FinanceEntry, FinanceOverview, FinancePlayerRow } from '@/types'
+import type { FinanceEntry, FinanceOverview, FinancePaid, FinancePaidPlayer, FinancePaidWindow, FinancePlayerRow } from '@/types'
 import { PLAN_LABEL, formatMoney, needsAttention, reminderText, shortNiceDate, subLine, whatsappLink } from './money'
 import { PaymentSheet, RenewSheet, type SheetPlayer } from './sheets'
 import { useIsFinanceAdmin } from './hooks'
@@ -43,6 +44,12 @@ export function FinanceScreen() {
   const activity = useQuery({
     queryKey: ['finance', activeOrg?.id, 'activity'],
     queryFn: async () => (await api.get<FinanceEntry[]>('finance/activity', { limit: 8 })).data,
+    enabled: !!activeOrg && isAdmin && !!overview.data?.enabled,
+  })
+
+  const paid = useQuery({
+    queryKey: ['finance', activeOrg?.id, 'paid'],
+    queryFn: async () => (await api.get<FinancePaid>('finance/paid')).data,
     enabled: !!activeOrg && isAdmin && !!overview.data?.enabled,
   })
 
@@ -174,6 +181,9 @@ export function FinanceScreen() {
           </section>
         )}
 
+        {/* Who has paid */}
+        <PaidLists paid={paid.data} loading={paid.isLoading} currency={currency} />
+
         {/* Players */}
         <section>
           <SectionTitle>Players</SectionTitle>
@@ -244,6 +254,95 @@ export function FinanceScreen() {
         today={data.today}
       />
     </div>
+  )
+}
+
+type PaidTab = 'last_week' | 'this_week' | 'month'
+
+const PAID_TABS: { key: PaidTab; label: string }[] = [
+  { key: 'this_week', label: 'This week' },
+  { key: 'last_week', label: 'Last week' },
+  { key: 'month', label: 'This month' },
+]
+
+function rangeLabel(w: FinancePaidWindow, tab: PaidTab): string {
+  if (tab === 'month') return format(parseISO(w.from), 'MMMM yyyy')
+  return `${format(parseISO(w.from), 'd MMM')} – ${format(parseISO(w.to), 'd MMM')}`
+}
+
+/** Plain lists of who has paid: this week, last week, this month. */
+function PaidLists({ paid, loading, currency }: { paid?: FinancePaid; loading: boolean; currency: string }) {
+  const [tab, setTab] = useState<PaidTab>('this_week')
+  const win = paid?.[tab]
+  const carried = tab === 'this_week' ? paid?.this_week.carried ?? [] : []
+
+  return (
+    <section>
+      <SectionTitle>Who has paid</SectionTitle>
+      <div className="mb-3 grid grid-cols-3 gap-1 rounded-xl border border-pitch-700 bg-pitch-900 p-1" role="tablist">
+        {PAID_TABS.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              'h-10 cursor-pointer rounded-lg text-[14px] transition-colors',
+              tab === t.key ? 'bg-volt-400 font-semibold text-void' : 'text-chalk-muted hover:text-chalk',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading || !win ? (
+        <Skeleton className="h-40" />
+      ) : (
+        <Card className="p-0">
+          <div className="flex items-baseline justify-between border-b border-pitch-700 px-4 py-3">
+            <div>
+              <div className="text-[13px] text-chalk-muted">{rangeLabel(win, tab)}</div>
+              <div className="text-[13px] text-chalk-muted">{win.players.length} paid</div>
+            </div>
+            <div className="numeric text-xl text-volt-400">{formatMoney(win.total, currency)}</div>
+          </div>
+          {win.players.length === 0 && carried.length === 0 ? (
+            <p className="px-4 py-6 text-center text-[14px] text-chalk-muted">Nobody has paid in this period yet.</p>
+          ) : (
+            <>
+              {win.players.length > 0 && (
+                <ul className="divide-y divide-pitch-700">
+                  {win.players.map((p) => <PaidRow key={p.player_id} p={p} currency={currency} />)}
+                </ul>
+              )}
+              {carried.length > 0 && (
+                <>
+                  <div className="border-y border-pitch-700 bg-pitch-800/50 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-chalk-muted">
+                    Money carried over, covers this week
+                  </div>
+                  <ul className="divide-y divide-pitch-700">
+                    {carried.map((p) => <PaidRow key={p.player_id} p={p} currency={currency} />)}
+                  </ul>
+                </>
+              )}
+            </>
+          )}
+        </Card>
+      )}
+    </section>
+  )
+}
+
+function PaidRow({ p, currency }: { p: FinancePaidPlayer; currency: string }) {
+  return (
+    <li>
+      <Link to={`/app/finance/${p.player_id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-pitch-800/60">
+        <PlayerAvatar name={p.display_name} photoUrl={p.photo_url} size="sm" />
+        <span className="min-w-0 flex-1 truncate text-[15px] text-chalk">{p.display_name}</span>
+        <span className="numeric text-[15px] text-chalk">{formatMoney(p.amount, currency)}</span>
+      </Link>
+    </li>
   )
 }
 
