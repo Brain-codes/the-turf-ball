@@ -800,6 +800,28 @@ export interface FinanceOverview {
   players?: FinancePlayerRow[]
 }
 
+export interface FinancePaidPlayer {
+  player_id: string
+  display_name: string
+  photo_url: string | null
+  amount: number
+  payments?: number
+}
+
+export interface FinancePaidWindow {
+  from: string
+  to: string
+  total: number
+  players: FinancePaidPlayer[]
+}
+
+export interface FinancePaid {
+  today: string
+  last_week: FinancePaidWindow
+  this_week: FinancePaidWindow & { carried: FinancePaidPlayer[] }
+  month: FinancePaidWindow
+}
+
 export interface FinanceEntry {
   id: string
   player_id?: string
