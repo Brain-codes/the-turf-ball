@@ -4,7 +4,7 @@
  * JavaScript runs. Visitors get the same single-page app either way.
  */
 
-export const SITE_URL = (process.env.VITE_SITE_URL || 'https://the-turf-ball.pages.dev').replace(/\/$/, '')
+export const SITE_URL = (process.env.VITE_SITE_URL || 'https://theturfball.pages.dev').replace(/\/$/, '')
 const FUNCTIONS_URL = (process.env.VITE_FUNCTIONS_URL || '').replace(/\/$/, '')
 const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || ''
 
