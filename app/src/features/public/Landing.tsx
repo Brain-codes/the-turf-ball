@@ -339,7 +339,7 @@ function ShareMock() {
         <div className="mt-4 max-w-[90%] rounded-2xl rounded-tl-sm bg-turf-600/40 p-3.5 text-[14px] leading-relaxed">
           Table's updated 👇 Tunde's still top but Chidi is 6 behind
           <div className="mt-2.5 rounded-xl bg-void/60 p-3">
-            <p className="text-[12px] text-chalk-faint">the-turf-ball.vercel.app</p>
+            <p className="text-[12px] text-chalk-faint">the-turf-ball.pages.dev</p>
             <p className="mt-0.5 font-semibold">Sunday Ballers — September table</p>
           </div>
         </div>

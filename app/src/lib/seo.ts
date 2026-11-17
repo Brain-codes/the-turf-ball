@@ -8,7 +8,7 @@
 import { createElement, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 
-export const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, '') || 'https://the-turf-ball.vercel.app'
+export const SITE_URL = (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, '') || 'https://the-turf-ball.pages.dev'
 export const SITE_NAME = 'The Turf Ball'
 export const DEFAULT_DESCRIPTION =
   'Free football stats app for grassroots and Sunday league groups. Record goals and assists at the pitch, get an automatic points table and Player of the Month, and share it all in one WhatsApp link.'

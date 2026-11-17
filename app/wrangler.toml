@@ -1,0 +1,5 @@
+name = "the-turf-ball"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-09-01"
+# nodejs_compat fills process.env from the project's variables, which api/_lib.ts reads.
+compatibility_flags = ["nodejs_compat"]
